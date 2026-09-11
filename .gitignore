@@ -1,0 +1,15 @@
+# 前端忽略
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# SpringBoot后端忽略
+target
+*.class
+*.jar
+
+# 系统/编辑器文件
+.DS_Store
+Thumbs.db
+.idea
+.vscode
