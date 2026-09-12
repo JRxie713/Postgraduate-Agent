@@ -4,10 +4,31 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/testdb?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://127.0.0.1:3306/pg_agent?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     username: root
-    password: ????
+    password: your_password
+    hikari:
+      initialization-fail-timeout: -1
+
+  redis:
+    host: 127.0.0.1
+    port: 6379
+    database: 0
+    timeout: 3000
+
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.demo.scaffoldbackend.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# ===== Shiro 配置（临时关闭，由后续队员开启并完善） =====
+shiro:
+  enabled: false
