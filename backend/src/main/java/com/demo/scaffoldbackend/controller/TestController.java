@@ -12,6 +12,8 @@ import java.util.Map;
 @RequestMapping("/api/test")
 
 public class TestController {
+
+    // Git协作测试 - 这行代码用于验证团队推送和拉取流程
     @GetMapping("/hello")
     public Result<Map<String, String>> hello() {
         Map<String, String> map = new HashMap<>();
