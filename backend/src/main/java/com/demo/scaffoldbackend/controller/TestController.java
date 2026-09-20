@@ -3,6 +3,7 @@ package com.demo.scaffoldbackend.controller;
 import com.demo.scaffoldbackend.common.result.Result;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.HashMap;
@@ -21,4 +22,13 @@ public class TestController {
         map.put("status", "running");
         return Result.success(map);
     }
+
+    /**
+     * GET接口：接收url参数，测试带参数请求
+     */
+    @GetMapping("/say")
+    public Result<String> say(@RequestParam String name){
+        return Result.success("你好：" + name + "，系统正常");
+    }
+
 }
