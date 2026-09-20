@@ -1,42 +1,15 @@
-# ===== 前端 =====
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
+# 前端忽略
+frontend/node_modules
+frontend/dist
+frontend/.vite
 
-# ===== Spring Boot / Maven =====
-backend/target/
-backend/*.class
-backend/*.jar
-backend/HELP.md
+# SpringBoot后端忽略
+target
+*.class
+*.jar
 
-# ===== Maven Wrapper jar（二进制） =====
-backend/.mvn/wrapper/maven-wrapper.jar
-
-# ===== 日志 =====
-logs/
-*.log
-
-# ===== IDE =====
-.idea/
-*.iml
-*.iws
-*.ipr
-.vscode/
-.classpath
-.project
-.settings/
-
-# ===== OS =====
+# 系统/编辑器文件
 .DS_Store
 Thumbs.db
-desktop.ini
-
-# ===== 敏感配置 =====
-.env
-.env.local
-.env.*.local
-
-# ===== Docker =====
-docker-compose.override.yml
-
-# ===== End =====
+.idea
+.vscode

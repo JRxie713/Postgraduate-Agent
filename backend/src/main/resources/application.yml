@@ -1,12 +1,7 @@
 server:
   port: 8080
-  servlet:
-    context-path: /
 
 spring:
-  application:
-    name: scaffold-backend
-
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://127.0.0.1:3306/pg_agent?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
@@ -14,27 +9,18 @@ spring:
     password: your_password
     hikari:
       initialization-fail-timeout: -1
-      maximum-pool-size: 10
-      minimum-idle: 5
 
   redis:
     host: 127.0.0.1
     port: 6379
     database: 0
     timeout: 3000
-    lettuce:
-      pool:
-        max-active: 10
-        max-idle: 5
-        min-idle: 1
 
   rabbitmq:
     host: 127.0.0.1
     port: 5672
     username: guest
     password: guest
-    publisher-confirm-type: correlated
-    publisher-returns: true
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
@@ -43,23 +29,6 @@ mybatis:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
-# JWT 配置
-jwt:
-  secret: ${JWT_SECRET:scaffold-backend-secret-key-must-be-at-least-32-chars-long}
-  expiration: 86400000  # 24 小时（毫秒）
-
-# Actuator
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-  endpoint:
-    health:
-      show-details: always
-
-# 日志
-logging:
-  level:
-    com.demo.scaffoldbackend: debug
-    org.springframework.security: info
+# ===== Shiro 配置（临时关闭，由后续队员开启并完善） =====
+shiro:
+  enabled: false

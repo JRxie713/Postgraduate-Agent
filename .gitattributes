@@ -1,0 +1,14 @@
+# 统一换行符为 LF，避免跨平台 CRLF/LF 混乱
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.jar   binary
+*.class binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
