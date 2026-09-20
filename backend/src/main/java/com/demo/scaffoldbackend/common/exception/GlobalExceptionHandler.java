@@ -26,4 +26,7 @@ public class GlobalExceptionHandler {
     public Result<?> handleIllegalArgument(IllegalArgumentException e) {
         return Result.error(400, e.getMessage());
     }
+
+    log.info("全局异常处理器加载完成");
+    log.info("全局异常处理器加载完成");
 }
