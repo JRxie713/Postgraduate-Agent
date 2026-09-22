@@ -11,7 +11,7 @@ import java.util.Map;
 
 public class TestController {
 
-    // Git协作测试
+    // Git协作测试 - 这行代码用于验证团队推送和拉取流程
     @GetMapping("/hello")
     public Result<Map<String, String>> hello() {
         Map<String, String> map = new HashMap<>();
@@ -20,6 +20,15 @@ public class TestController {
         return Result.success(map);
     }
 
-
+    /**
+     * POST接口：JSON提交测试
+     */
+    @PostMapping("/submit")
+    public Result<Map<String,Object>> submit(@RequestBody Map<String,Object> data){
+        Map<String,Object> res = new HashMap<>();
+        res.put("receiveData", data);
+        res.put("msg","POST数据接收成功");
+        return Result.success(res);
+    }
 
 }
