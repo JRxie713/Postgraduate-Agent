@@ -11,6 +11,7 @@ import java.util.Map;
 
 public class TestController {
 
+    // Git协作测试
     @GetMapping("/hello")
     public Result<Map<String, String>> hello() {
         Map<String, String> map = new HashMap<>();
