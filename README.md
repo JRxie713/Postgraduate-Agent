@@ -98,13 +98,7 @@ Postgraduate-Agent
 │   ├── index.html                  # HTML 模板
 │   ├── vite.config.js              # Vite 构建配置
 │   └── package.json                # 前端依赖管理
-├── docs/                           # 项目文档
-│   ├── 系统功能分析说明书.md
-│   ├── 系统接口设计文档.md
-│   ├── 系统详细设计.md
-│   ├── 系统安装部署文档.md
-│   ├── 系统操作说明书.md
-│   └── 数据库脚本.sql
+├── docs                            # 项目文档
 ├── docker-compose.yml              # Docker 多容器编排
 ├── .gitignore                      # Git 忽略规则
 └── README.md
