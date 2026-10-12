@@ -248,7 +248,7 @@ npm run dev
 ### 常用 Git 命令
 
 - 提交代码至远程仓库：依次执行 `git add .`、`git commit -m "类型: 描述内容"`、`git push`
-  - 提交类型说明：feat 新功能、fix 修复缺陷、docs 文档更新、refactor 代码重构
+    - 提交类型说明：feat 新功能、fix 修复缺陷、docs 文档更新、refactor 代码重构
 - 拉取远程仓库最新代码：执行 `git pull`
 - 强制同步为远程版本（会覆盖本地修改，请谨慎使用）：执行 `git fetch origin` 后再执行 `git reset --hard origin/main`
 
