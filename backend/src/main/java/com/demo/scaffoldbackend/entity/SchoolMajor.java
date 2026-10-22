@@ -1,0 +1,42 @@
+package com.demo.scaffoldbackend.entity;
+
+import lombok.Data;
+
+import java.time.LocalDateTime;
+
+/**
+ * 表2 院校专业表
+ */
+@Data
+public class SchoolMajor {
+
+    /** 主键 */
+    private Integer id;
+
+    /** 院校名称 */
+    private String school;
+
+    /** 专业名称 */
+    private String major;
+
+    /** 招生人数 */
+    private Integer enrollNum;
+
+    /** 报录比 */
+    private Double ratio;
+
+    /** 分数线 */
+    private Double scoreLine;
+
+    /** 考试科目 */
+    private String examSubjects;
+
+    /** 参考书目 */
+    private String refBooks;
+
+    /** 记录创建时间 */
+    private LocalDateTime createTime;
+
+    /** 记录修改时间 */
+    private LocalDateTime updateTime;
+}
