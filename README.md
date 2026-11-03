@@ -11,7 +11,7 @@
 
 项目采用前后端分离架构：
 - **前端**：基于 Vue3 + Vite + ESLint 搭建工程化脚手架；
-- **后端**：基于 Spring Boot + Shiro + MyBatis 实现，包含权限控制、日志管理、数据库交互、统一响应封装等基础能力。
+- **后端**：基于 Spring Boot + Shiro + MyBatis-Plus 实现，包含权限控制、日志管理、数据库交互、统一响应封装等基础能力。
 
 ## 核心特性
 
@@ -32,7 +32,7 @@
 ### 后端
 - Spring Boot
 - Shiro（权限控制）
-- MyBatis（数据访问层）
+- MyBatis-Plus（数据访问层）
 - SLF4J + Log4j2（日志管理）
 - MySQL（关系型数据库）
 
@@ -48,7 +48,7 @@
 └─────────────┘                               │  ├────────────────────────────┤  │
                                               │  │  Service 业务逻辑层         │  │
                                               │  ├────────────────────────────┤  │
-                                              │  │  Mapper 数据访问层 (MyBatis) │  │
+                                              │  │  Mapper 数据访问层 (MyBatis-Plus) │  │
                                               │  ├────────────────────────────┤  │
                                               │  │  MySQL / Redis 存储          │  │
                                               │  └────────────────────────────┘  │
@@ -58,7 +58,7 @@
 各层职责：
 - **Controller**：接收请求、参数校验、调用 Service、封装 `Result<T>` 统一响应
 - **Service / impl**：业务逻辑编排、事务控制、与 Mapper 交互
-- **Mapper**：基于 MyBatis 的数据访问层，配合 `resources/mapper/*.xml` 完成 SQL 映射
+- **Mapper**：基于 MyBatis-Plus `BaseMapper` 完成通用 CRUD，复杂 SQL 可配合 `resources/mapper/*.xml` 自定义映射
 - **common/result**：`Result<T>` 统一响应封装，统一 code / message / data 结构
 - **common/exception**：全局异常处理，统一错误返回
 - **config**：Shiro 权限配置、CORS 跨域配置等基础设施
@@ -76,14 +76,14 @@ Postgraduate-Agent
 │   │   ├── controller/             # 接口控制器层
 │   │   ├── dto/                    # 数据传输对象
 │   │   ├── entity/                 # 数据库实体类
-│   │   ├── mapper/                 # MyBatis 数据访问层
+│   │   ├── mapper/                 # MyBatis-Plus 数据访问层
 │   │   ├── service/                # 业务逻辑层
 │   │   │   └── impl/               # 业务实现类
 │   │   └── ScaffoldBackendApplication.java  # 项目启动入口
 │   ├── src/main/resources/
 │   │   ├── application.yml         # 应用主配置
 │   │   ├── log4j2.xml              # 日志配置
-│   │   └── mapper/                 # MyBatis XML 映射文件
+│   │   └── mapper/                 # MyBatis-Plus XML 映射文件
 │   ├── src/test/                   # 单元测试
 │   ├── pom.xml                     # Maven 依赖管理
 │   ├── mvnw / mvnw.cmd             # Maven Wrapper

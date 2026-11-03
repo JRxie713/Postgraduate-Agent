@@ -1,5 +1,8 @@
 package com.demo.scaffoldbackend.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -8,9 +11,11 @@ import java.time.LocalDateTime;
  * 表11 学习日志表
  */
 @Data
+@TableName("learning_log")
 public class LearningLog {
 
     /** 主键 */
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
     /** 用户ID */
