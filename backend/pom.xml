@@ -62,6 +62,12 @@
         </dependency>
 
 
+        <!-- 安全认证：Spring Security -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- MyBatis-Plus + MySQL -->
         <dependency>
             <groupId>com.baomidou</groupId>

@@ -38,16 +38,18 @@ import com.demo.scaffoldbackend.vo.TodayGuideVO;
 import com.demo.scaffoldbackend.vo.UserProfileVO;
 import com.demo.scaffoldbackend.vo.WeakPointVO;
 import com.demo.scaffoldbackend.vo.WeeklyReportVO;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
 /**
- * AI 导学增强模块
+ * AI 导学增强模块（学生/管理员）
  */
 @RestController
 @RequestMapping("/api/ai")
+@PreAuthorize("hasAnyRole('STUDENT','ADMIN')")
 public class AiController {
 
     // ===== 11.1 入学诊断与备考画像 =====

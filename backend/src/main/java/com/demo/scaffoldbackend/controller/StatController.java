@@ -7,15 +7,17 @@ import com.demo.scaffoldbackend.vo.QuestionQualityVO;
 import com.demo.scaffoldbackend.vo.SchoolHotVO;
 import com.demo.scaffoldbackend.vo.StatDistributionVO;
 import com.demo.scaffoldbackend.vo.StatOverviewVO;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 /**
- * 数据统计模块
+ * 数据统计模块（教师/管理员）
  */
 @RestController
 @RequestMapping("/api/stat")
+@PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
 public class StatController {
 
     /** 平台运营概览 */

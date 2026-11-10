@@ -29,3 +29,21 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 安全与认证配置
+security:
+  jwt:
+    secret: ${JWT_SECRET:change-me-please-use-a-long-32-bytes-secret-key}
+    access-expire: 7200        # 访问令牌有效期（秒），2h
+    refresh-expire: 604800     # 刷新令牌有效期（秒），7d
+  captcha:
+    enabled: false             # 登录图形验证码（预留，登录DTO未含验证码字段，暂关）
+  login:
+    max-fail: 5                # 连续失败锁定阈值
+    lock-minutes: 10           # 锁定时长（分钟）
+  rate-limit:
+    enabled: true
+    global-per-minute: 60      # 单IP每分钟请求上限
+    block-threshold: 300       # 单窗口内超过该值加入黑名单
+    block-minutes: 10          # 黑名单封禁时长（分钟）
+    ua-check-enabled: false    # 无UA拦截（默认关，避免误伤）
