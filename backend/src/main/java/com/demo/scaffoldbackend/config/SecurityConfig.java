@@ -54,7 +54,7 @@ public class SecurityConfig {
                         writeJson(response, HttpServletResponse.SC_UNAUTHORIZED, 401, "未登录或令牌已失效"))
                 .accessDeniedHandler((request, response, accessDeniedException) ->
                         writeJson(response, HttpServletResponse.SC_FORBIDDEN, 403, "无权限访问该资源")))
-            .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class)
+            .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
