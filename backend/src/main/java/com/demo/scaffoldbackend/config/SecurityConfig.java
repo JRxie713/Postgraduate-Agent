@@ -51,6 +51,8 @@ public class SecurityConfig {
         JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis);
 
         http.csrf(csrf -> csrf.disable())
+            .httpBasic(httpBasic -> httpBasic.disable())
+            .formLogin(formLogin -> formLogin.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
@@ -59,6 +61,7 @@ public class SecurityConfig {
                         "/api/user/captcha", "/api/user/login/status",
                         "/api/user/sms-code", "/api/user/login/sms",
                         "/api/user/email-code", "/api/user/login/email").permitAll()
+                .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .anyRequest().authenticated())
