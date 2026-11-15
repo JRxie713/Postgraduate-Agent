@@ -3,6 +3,7 @@ package com.demo.scaffoldbackend.common.exception;
 import com.demo.scaffoldbackend.common.result.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -36,6 +37,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public Result<?> handleIllegalArgument(IllegalArgumentException e) {
         return Result.error(400, e.getMessage());
+    }
+
+    /**
+     * 方法级鉴权失败（@PreAuthorize 角色不匹配）
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public Result<?> handleAccessDenied(AccessDeniedException e) {
+        return Result.error(403, "无权访问该资源");
     }
 
     /**

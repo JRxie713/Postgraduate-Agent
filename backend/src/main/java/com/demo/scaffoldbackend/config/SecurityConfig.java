@@ -38,14 +38,27 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   JwtAuthenticationFilter jwtAuthenticationFilter,
-                                                   RateLimitFilter rateLimitFilter) throws Exception {
+                                                   JwtUtil jwtUtil,
+                                                   StringRedisTemplate redis,
+                                                   @Value("${security.rate-limit.enabled:true}") boolean rateEnabled,
+                                                   @Value("${security.rate-limit.global-per-minute:60}") long globalPerMinute,
+                                                   @Value("${security.rate-limit.block-threshold:300}") long blockThreshold,
+                                                   @Value("${security.rate-limit.block-minutes:10}") long blockMinutes,
+                                                   @Value("${security.rate-limit.ua-check-enabled:false}") boolean uaCheckEnabled) throws Exception {
+        // 直接实例化，避免 Filter 以 Bean 形式被 Boot 再注册一次导致重复执行
+        RateLimitFilter rateLimitFilter = new RateLimitFilter(redis, objectMapper, rateEnabled,
+                globalPerMinute, blockThreshold, blockMinutes, uaCheckEnabled);
+        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis);
+
         http.csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/user/login", "/api/user/register",
-                        "/api/user/check", "/api/user/refresh").permitAll()
+                        "/api/user/check", "/api/user/refresh",
+                        "/api/user/captcha", "/api/user/login/status",
+                        "/api/user/sms-code", "/api/user/login/sms",
+                        "/api/user/email-code", "/api/user/login/email").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .anyRequest().authenticated())
@@ -62,22 +75,6 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public JwtAuthenticationFilter jwtAuthenticationFilter(JwtUtil jwtUtil) {
-        return new JwtAuthenticationFilter(jwtUtil);
-    }
-
-    @Bean
-    public RateLimitFilter rateLimitFilter(StringRedisTemplate redis,
-                                           @Value("${security.rate-limit.enabled:true}") boolean enabled,
-                                           @Value("${security.rate-limit.global-per-minute:60}") long globalPerMinute,
-                                           @Value("${security.rate-limit.block-threshold:300}") long blockThreshold,
-                                           @Value("${security.rate-limit.block-minutes:10}") long blockMinutes,
-                                           @Value("${security.rate-limit.ua-check-enabled:false}") boolean uaCheckEnabled) {
-        return new RateLimitFilter(redis, objectMapper, enabled, globalPerMinute,
-                blockThreshold, blockMinutes, uaCheckEnabled);
     }
 
     @Bean

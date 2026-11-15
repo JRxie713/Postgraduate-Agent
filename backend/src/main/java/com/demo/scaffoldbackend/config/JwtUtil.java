@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * JWT 令牌工具：签发/解析访问令牌与刷新令牌
@@ -32,6 +33,7 @@ public class JwtUtil {
     /** 签发访问令牌 */
     public String issueAccess(Integer userId, String role) {
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(String.valueOf(userId))
                 .claim("role", role)
                 .claim("type", "access")
@@ -41,9 +43,10 @@ public class JwtUtil {
                 .compact();
     }
 
-    /** 签发刷新令牌 */
+    /** 签发刷新令牌（jti 保证每次刷新令牌唯一，避免同秒重复签发导致轮换失效） */
     public String issueRefresh(Integer userId) {
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(String.valueOf(userId))
                 .claim("type", "refresh")
                 .issuedAt(new Date())

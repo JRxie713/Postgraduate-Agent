@@ -3,6 +3,7 @@ package com.demo.scaffoldbackend.vo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 学习计划响应体
@@ -36,4 +37,13 @@ public class StudyPlanVO {
 
     /** 记录修改时间 */
     private LocalDateTime updateTime;
+
+    /** 计划下的任务列表 */
+    private List<PlanTaskVO> tasks;
+
+    /** 任务总数 */
+    private Integer taskTotal;
+
+    /** 已完成任务数 */
+    private Integer taskDone;
 }

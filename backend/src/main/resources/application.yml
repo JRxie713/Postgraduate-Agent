@@ -4,16 +4,17 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: ${DB_USERNAME}
-    password: ${DB_PASSWORD}
+    # 默认连 3306；本机 MySQL 端口不是 3306 时，设置环境变量 DB_PORT（或整个 DB_URL）覆盖即可，队友无需改代码
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3306}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
     hikari:
       initialization-fail-timeout: -1
 
   data:
     redis:
-      host: 127.0.0.1
-      port: 6380
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
       database: 0
       timeout: 3000
 
@@ -22,6 +23,21 @@ spring:
     port: 5672
     username: guest
     password: guest
+
+  # QQ 邮箱 SMTP：MAIL_USERNAME 填你的 QQ 邮箱，MAIL_AUTH_CODE 填 QQ 邮箱生成的 16 位授权码
+  # 未配置时验证码只打印到后端日志（[MAIL-MOCK]），不会真正发信
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: ${MAIL_USERNAME:3305534250@qq.com}
+    password: ${MAIL_AUTH_CODE:vkmejjllywzgcihh}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
@@ -37,10 +53,18 @@ security:
     access-expire: 7200        # 访问令牌有效期（秒），2h
     refresh-expire: 604800     # 刷新令牌有效期（秒），7d
   captcha:
-    enabled: false             # 登录图形验证码（预留，登录DTO未含验证码字段，暂关）
+    enabled: true              # 登录图形验证码
+    expire-seconds: 120        # 验证码有效期（秒），一次性使用
   login:
     max-fail: 5                # 连续失败锁定阈值
-    lock-minutes: 10           # 锁定时长（分钟）
+    lock-minutes: 3            # 锁定时长（分钟）
+  sms:
+    expire-seconds: 300        # 短信验证码有效期（秒）
+    cooldown-seconds: 60       # 同一手机号重发冷却（秒）
+    expose-code: false         # 验证码只写入 Redis 和后端日志，不回显到网页；联调可从 Redis 读取
+  email:
+    expire-seconds: 300        # 邮箱验证码有效期（秒）
+    cooldown-seconds: 60       # 同一邮箱重发冷却（秒）
   rate-limit:
     enabled: true
     global-per-minute: 60      # 单IP每分钟请求上限
