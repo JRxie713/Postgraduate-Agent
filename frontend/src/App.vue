@@ -26,9 +26,9 @@ async function loadDashboard() {
 
 function openDashboard() { page.value = 'dashboard'; loadDashboard(); if (!timer) timer = setInterval(loadDashboard, 10000) }
 function closeDashboard() { page.value = 'home'; clearInterval(timer); timer = null }
-async function onLogin() { logged.value = true; const result = await currentUser(); if (result.code === 200 && result.data?.userRole === 'ADMIN') openDashboard() }
+function onLogin() { logged.value = true; page.value = 'home' }
 function onLogout() { clearInterval(timer); timer = null; localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY); logged.value = false; page.value = 'home' }
-onMounted(async () => { if (!logged.value) return; const result = await currentUser(); if (result.code !== 200) return onLogout(); if (result.data?.userRole === 'ADMIN') openDashboard() })
+onMounted(async () => { if (!logged.value) return; const result = await currentUser(); if (result.code !== 200) onLogout() })
 onBeforeUnmount(() => clearInterval(timer))
 </script>
 
@@ -48,7 +48,7 @@ onBeforeUnmount(() => clearInterval(timer))
       </section>
     </template>
   </main>
-  <HomeView v-else @logout="onLogout" />
+  <HomeView v-else @logout="onLogout" @open-dashboard="openDashboard" />
 </template>
 
 <style scoped>

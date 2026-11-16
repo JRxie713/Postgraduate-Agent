@@ -13,7 +13,7 @@ import {
 } from '../api/study'
 import { REFRESH_KEY, TOKEN_KEY } from '../api/http'
 
-const emit = defineEmits(['logout'])
+const emit = defineEmits(['logout', 'open-dashboard'])
 
 const tab = ref('plan')
 const user = ref(null)
@@ -73,6 +73,7 @@ async function loadUser() {
   const data = await currentUser()
   if (data.code === 200) {
     user.value = data.data
+    if (data.data?.userRole === 'ADMIN') tab.value = 'policy'
   } else {
     message.value = data.message || '获取用户信息失败'
   }
@@ -311,10 +312,9 @@ async function doLogout() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadUser(), loadPlans(), loadPolicies()])
-  if (isAdmin.value) {
-    await loadUsers()
-  }
+  await loadUser()
+  await Promise.all(isAdmin.value ? [loadPolicies()] : [loadPlans(), loadPolicies()])
+  if (isAdmin.value) await loadUsers()
 })
 </script>
 
@@ -338,7 +338,7 @@ onMounted(async () => {
         <p class="sub">今天也把计划往前推一点。</p>
 
         <nav class="nav">
-          <button :class="['nav-item', { active: tab === 'plan' }]" type="button" @click="tab = 'plan'">
+          <button v-if="!isAdmin" :class="['nav-item', { active: tab === 'plan' }]" type="button" @click="tab = 'plan'">
             <span class="nav-title">学习计划</span>
             <span class="nav-desc">拆任务、看进度</span>
           </button>
@@ -355,6 +355,15 @@ onMounted(async () => {
             <span class="nav-title">用户管理</span>
             <span class="nav-desc">教师 / 管理员账号</span>
           </button>
+          <button
+            v-if="isAdmin"
+            class="nav-item"
+            type="button"
+            @click="emit('open-dashboard')"
+          >
+            <span class="nav-title">数据大屏</span>
+            <span class="nav-desc">平台实时指标</span>
+          </button>
         </nav>
       </aside>
 
@@ -362,7 +371,7 @@ onMounted(async () => {
         <p v-if="message" class="message">{{ message }}</p>
 
         <!-- 学习计划 -->
-        <section v-if="tab === 'plan'">
+        <section v-if="tab === 'plan' && !isAdmin">
           <div class="panel-head">
             <h2>学习计划</h2>
             <span class="hint">勾选任务即可自动统计完成率</span>
