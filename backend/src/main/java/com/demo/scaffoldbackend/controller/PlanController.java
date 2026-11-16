@@ -12,9 +12,11 @@ import com.demo.scaffoldbackend.mapper.PlanTaskMapper;
 import com.demo.scaffoldbackend.mapper.StudyPlanMapper;
 import com.demo.scaffoldbackend.vo.PlanTaskVO;
 import com.demo.scaffoldbackend.vo.StudyPlanVO;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,10 +30,12 @@ public class PlanController {
 
     private final StudyPlanMapper planMapper;
     private final PlanTaskMapper taskMapper;
+    private final StringRedisTemplate redis;
 
-    public PlanController(StudyPlanMapper planMapper, PlanTaskMapper taskMapper) {
+    public PlanController(StudyPlanMapper planMapper, PlanTaskMapper taskMapper, StringRedisTemplate redis) {
         this.planMapper = planMapper;
         this.taskMapper = taskMapper;
+        this.redis = redis;
     }
 
     /** 当前登录用户的学习计划（含任务与完成进度） */
@@ -112,10 +116,19 @@ public class PlanController {
         if (!"DONE".equals(status) && !"TODO".equals(status)) {
             throw new BusinessException(400, "任务状态只能是 TODO 或 DONE");
         }
+        boolean completedNow = "DONE".equals(status) && !"DONE".equals(task.getTaskStatus());
         task.setTaskStatus(status);
         task.setUpdateTime(LocalDateTime.now());
         taskMapper.updateById(task);
         refreshPlanProgress(plan);
+
+        if (completedNow) {
+            String activityKey = "postgraduate:activity";
+            String activity = LocalDateTime.now() + " · 用户完成任务：「" + task.getTaskName() + "」";
+            redis.opsForList().leftPush(activityKey, activity);
+            redis.opsForList().trim(activityKey, 0, 99);
+            redis.expire(activityKey, Duration.ofDays(7));
+        }
         return Result.success(toTaskVO(task));
     }
 

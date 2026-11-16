@@ -29,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -141,12 +142,29 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtUtil.issueAccess(user.getId(), user.getUserRole());
         String refresh = jwtUtil.issueRefresh(user.getId());
         saveTokens(user.getId(), access, refresh);
+        recordDashboardLogin(user);
 
         TokenVO vo = new TokenVO();
         vo.setAccessToken(access);
         vo.setRefreshToken(refresh);
         vo.setExpiresIn(jwtUtil.getAccessExpire());
         return vo;
+    }
+
+    /**
+     * 记录真实登录产生的 Redis 实时指标：当天活跃用户与动态列表。
+     * 同一用户当天重复登录由 Set 自动去重。
+     */
+    private void recordDashboardLogin(User user) {
+        String activeKey = "postgraduate:active:" + LocalDate.now();
+        redis.opsForSet().add(activeKey, String.valueOf(user.getId()));
+        redis.expire(activeKey, Duration.ofDays(8));
+
+        String activityKey = "postgraduate:activity";
+        String activity = LocalDateTime.now() + " · 用户「" + user.getUserName() + "」登录成功";
+        redis.opsForList().leftPush(activityKey, activity);
+        redis.opsForList().trim(activityKey, 0, 99);
+        redis.expire(activityKey, Duration.ofDays(7));
     }
 
     @Override
