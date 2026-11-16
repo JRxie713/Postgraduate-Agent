@@ -30,6 +30,23 @@ public class DashboardController {
         this.redis = redis;
     }
 
+    /**
+     * 数据大屏一次刷新所需的全部数据。
+     *
+     * 前端使用该聚合接口，避免一次刷新拆成多个 HTTP 请求而快速触发全局限流。
+     */
+    @GetMapping("/summary")
+    public Result<Map<String, Object>> summary() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("overview", overview().getData());
+        data.put("trend", trend(7).getData());
+        data.put("subjects", subjectHours().getData());
+        data.put("tasks", taskCompletion().getData());
+        data.put("schools", schoolHot(5).getData());
+        data.put("activities", activities(10).getData());
+        return Result.success(data);
+    }
+
     @GetMapping("/overview")
     public Result<Map<String, Object>> overview() {
         Map<String, Object> data = new LinkedHashMap<>();

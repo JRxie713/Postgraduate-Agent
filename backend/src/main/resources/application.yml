@@ -7,7 +7,7 @@ spring:
     # 默认连 3306；本机 MySQL 端口不是 3306 时，设置环境变量 DB_PORT（或整个 DB_URL）覆盖即可，队友无需改代码
     url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3306}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    password: ${DB_PASSWORD:123456}
     hikari:
       initialization-fail-timeout: -1
 
