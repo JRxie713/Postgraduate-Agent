@@ -40,6 +40,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtUtil jwtUtil,
                                                    StringRedisTemplate redis,
+                                                   com.demo.scaffoldbackend.service.RbacService rbacService,
                                                    @Value("${security.rate-limit.enabled:true}") boolean rateEnabled,
                                                    @Value("${security.rate-limit.global-per-minute:60}") long globalPerMinute,
                                                    @Value("${security.rate-limit.block-threshold:300}") long blockThreshold,
@@ -48,7 +49,7 @@ public class SecurityConfig {
         // 直接实例化，避免 Filter 以 Bean 形式被 Boot 再注册一次导致重复执行
         RateLimitFilter rateLimitFilter = new RateLimitFilter(redis, objectMapper, rateEnabled,
                 globalPerMinute, blockThreshold, blockMinutes, uaCheckEnabled);
-        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis);
+        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis, rbacService);
 
         http.csrf(csrf -> csrf.disable())
             .httpBasic(httpBasic -> httpBasic.disable())

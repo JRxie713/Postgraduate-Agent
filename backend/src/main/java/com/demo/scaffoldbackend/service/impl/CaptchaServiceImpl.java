@@ -27,7 +27,7 @@ import java.util.UUID;
 @Service
 public class CaptchaServiceImpl implements CaptchaService {
 
-    /** 去掉了易混淆字符 0/O、1/I */
+    /** 去掉易混淆字符 0/O、1/I */
     private static final char[] SYMBOLS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray();
     private static final int WIDTH = 120;
     private static final int HEIGHT = 40;

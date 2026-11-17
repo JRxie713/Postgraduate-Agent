@@ -16,6 +16,7 @@ import com.demo.scaffoldbackend.mapper.UserMapper;
 import com.demo.scaffoldbackend.service.AuthService;
 import com.demo.scaffoldbackend.service.CaptchaService;
 import com.demo.scaffoldbackend.service.EmailCodeService;
+import com.demo.scaffoldbackend.service.RbacService;
 import com.demo.scaffoldbackend.service.SmsService;
 import com.demo.scaffoldbackend.vo.LoginStatusVO;
 import com.demo.scaffoldbackend.vo.TokenVO;
@@ -46,6 +47,7 @@ public class AuthServiceImpl implements AuthService {
     private final CaptchaService captchaService;
     private final SmsService smsService;
     private final EmailCodeService emailCodeService;
+    private final RbacService rbacService;
 
     @Value("${security.login.max-fail:5}")
     private int maxFail;
@@ -56,7 +58,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthServiceImpl(UserMapper userMapper, PasswordEncoder passwordEncoder,
                            JwtUtil jwtUtil, StringRedisTemplate redis,
                            CaptchaService captchaService, SmsService smsService,
-                           EmailCodeService emailCodeService) {
+                           EmailCodeService emailCodeService, RbacService rbacService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
@@ -64,6 +66,7 @@ public class AuthServiceImpl implements AuthService {
         this.captchaService = captchaService;
         this.smsService = smsService;
         this.emailCodeService = emailCodeService;
+        this.rbacService = rbacService;
     }
 
     @Override
@@ -217,6 +220,8 @@ public class AuthServiceImpl implements AuthService {
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
+        // 公开注册固定为学生：自动加入“学生组”，获得学生的基础权限
+        rbacService.assignDefaultGroup(user.getId(), "STUDENT");
         return toVO(user);
     }
 
@@ -426,6 +431,7 @@ public class AuthServiceImpl implements AuthService {
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
+        rbacService.assignDefaultGroup(user.getId(), user.getUserRole());
         return toVO(user);
     }
 
@@ -492,6 +498,11 @@ public class AuthServiceImpl implements AuthService {
         }
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
+        // 角色/权限组可能变化，清掉权限缓存；角色变化时补进对应的默认权限组
+        rbacService.evictPermissionCache(id);
+        if (!isBlank(dto.getUserRole())) {
+            rbacService.assignDefaultGroup(id, user.getUserRole());
+        }
         if (sessionChanged) {
             // 角色或状态变化后旧令牌立即失效，重新登录才会拿到新的角色
             invalidateSessions(id);
@@ -511,7 +522,9 @@ public class AuthServiceImpl implements AuthService {
                 throw new BusinessException(400, "系统至少需要保留一个管理员账号");
             }
         }
+        rbacService.saveUserGroups(id, java.util.Collections.emptyList());
         userMapper.deleteById(id);
+        rbacService.evictPermissionCache(id);
         invalidateSessions(id);
         return true;
     }

@@ -12,6 +12,16 @@ import {
   updateTaskStatus
 } from '../api/study'
 import { REFRESH_KEY, TOKEN_KEY } from '../api/http'
+import {
+  createGroup,
+  deleteGroup,
+  getUserGroups,
+  groupList,
+  myPermissions,
+  permissionCatalog,
+  saveUserGroups,
+  updateGroup
+} from '../api/rbac'
 
 const emit = defineEmits(['logout', 'open-dashboard'])
 
@@ -48,8 +58,21 @@ const policyForm = ref({ title: '', noticeType: '招生', noticeSource: '研招�
 const publishing = ref(false)
 
 const roleText = (role) => ({ STUDENT: '学生', TEACHER: '教师', ADMIN: '管理员' }[role] || role || '学生')
+const permissions = ref([])
+const hasPerm = (key) => permissions.value.includes(key)
 const isAdmin = computed(() => !!user.value && user.value.userRole === 'ADMIN')
-const canPublishPolicy = computed(() => !!user.value && ['ADMIN', 'TEACHER'].includes(user.value.userRole))
+const canPublishPolicy = computed(() => hasPerm('policy:create'))
+const canViewUsers = computed(() => hasPerm('user:view'))
+const canManageRbac = computed(() => hasPerm('rbac:manage'))
+
+// ===== 权限组（禅道式 RBAC） =====
+const rbacGroups = ref([])
+const rbacCatalog = ref([])
+const rbacLoading = ref(false)
+const editingGroup = ref({ id: null, name: '', description: '', status: 'NORMAL', privileges: [] })
+const assigning = ref(false)
+const assignUserId = ref('')
+const assignGroupIds = ref([])
 
 const todayText = computed(() => new Date().toLocaleDateString('zh-CN'))
 
@@ -73,10 +96,16 @@ async function loadUser() {
   const data = await currentUser()
   if (data.code === 200) {
     user.value = data.data
-    if (data.data?.userRole === 'ADMIN') tab.value = 'policy'
+    await loadPermissions()
+    if (isAdmin.value) tab.value = 'policy'
   } else {
     message.value = data.message || '获取用户信息失败'
   }
+}
+
+async function loadPermissions() {
+  const data = await myPermissions()
+  permissions.value = data.code === 200 && data.data ? data.data.permissions || [] : []
 }
 
 async function loadPlans() {
@@ -211,7 +240,7 @@ async function submitPolicy() {
 }
 
 async function loadUsers() {
-  if (!isAdmin.value) return
+  if (!canViewUsers.value) return
   userLoading.value = true
   const data = await userList({
     page: userPage.value,
@@ -311,10 +340,115 @@ async function doLogout() {
   emit('logout')
 }
 
+// ===== 权限组管理 =====
+async function loadRbac() {
+  rbacLoading.value = true
+  const [groups, catalog] = await Promise.all([groupList(), permissionCatalog()])
+  if (groups.code === 200) {
+    rbacGroups.value = groups.data || []
+  } else {
+    message.value = groups.message || '加载权限组失败'
+  }
+  if (catalog.code === 200) {
+    rbacCatalog.value = catalog.data || []
+  }
+  rbacLoading.value = false
+}
+
+function selectGroup(group) {
+  editingGroup.value = {
+    id: group.id,
+    name: group.name,
+    description: group.description || '',
+    status: group.status || 'NORMAL',
+    privileges: [...(group.privileges || [])]
+  }
+}
+
+function resetGroupForm() {
+  editingGroup.value = { id: null, name: '', description: '', status: 'NORMAL', privileges: [] }
+}
+
+function togglePriv(key) {
+  const list = editingGroup.value.privileges
+  const index = list.indexOf(key)
+  if (index >= 0) {
+    list.splice(index, 1)
+  } else {
+    list.push(key)
+  }
+}
+
+async function submitGroup() {
+  if (!editingGroup.value.name.trim()) {
+    message.value = '请填写权限组名称'
+    return
+  }
+  const payload = {
+    name: editingGroup.value.name.trim(),
+    description: editingGroup.value.description,
+    status: editingGroup.value.status,
+    privileges: editingGroup.value.privileges
+  }
+  const data = editingGroup.value.id
+    ? await updateGroup(editingGroup.value.id, payload)
+    : await createGroup(payload)
+  if (data.code === 200) {
+    message.value = `权限组「${payload.name}」已保存，相关用户重新登录后生效`
+    await loadRbac()
+    resetGroupForm()
+  } else {
+    message.value = data.message || '保存权限组失败'
+  }
+}
+
+async function removeGroup(group) {
+  if (!group.id) return
+  const data = await deleteGroup(group.id)
+  if (data.code === 200) {
+    message.value = `已删除权限组「${group.name}」`
+    await loadRbac()
+    resetGroupForm()
+  } else {
+    message.value = data.message || '删除权限组失败'
+  }
+}
+
+async function loadAssignGroups() {
+  if (!assignUserId.value) {
+    message.value = '请先填写用户 ID'
+    return
+  }
+  const data = await getUserGroups(assignUserId.value)
+  if (data.code === 200) {
+    assignGroupIds.value = data.data || []
+    message.value = `已读取用户 ${assignUserId.value} 的权限组`
+  } else {
+    message.value = data.message || '读取用户分组失败'
+  }
+}
+
+async function submitAssign() {
+  if (!assignUserId.value) {
+    message.value = '请先填写用户 ID'
+    return
+  }
+  assigning.value = true
+  try {
+    const data = await saveUserGroups(Number(assignUserId.value), assignGroupIds.value)
+    message.value = data.code === 200
+      ? `用户 ${assignUserId.value} 的权限组已更新，重新登录后生效`
+      : data.message || '保存用户分组失败'
+  } finally {
+    assigning.value = false
+  }
+}
+
 onMounted(async () => {
   await loadUser()
   await Promise.all(isAdmin.value ? [loadPolicies()] : [loadPlans(), loadPolicies()])
-  if (isAdmin.value) await loadUsers()
+  if (canViewUsers.value) await loadUsers()
+  if (canManageRbac.value) await loadRbac()
 })
 </script>
 
@@ -347,13 +481,22 @@ onMounted(async () => {
             <span class="nav-desc">招生 / 考试 / 院校</span>
           </button>
           <button
-            v-if="isAdmin"
+            v-if="canViewUsers"
             :class="['nav-item', { active: tab === 'user' }]"
             type="button"
             @click="tab = 'user'"
           >
             <span class="nav-title">用户管理</span>
             <span class="nav-desc">教师 / 管理员账号</span>
+          </button>
+          <button
+            v-if="canManageRbac"
+            :class="['nav-item', { active: tab === 'rbac' }]"
+            type="button"
+            @click="tab = 'rbac'"
+          >
+            <span class="nav-title">权限组</span>
+            <span class="nav-desc">模块 / 方法授权</span>
           </button>
           <button
             v-if="isAdmin"
@@ -515,8 +658,8 @@ onMounted(async () => {
           </article>
         </section>
 
-        <!-- 用户管理（仅管理员） -->
-        <section v-else-if="tab === 'user' && isAdmin">
+        <!-- 用户管理（需要 user:view 权限） -->
+        <section v-else-if="tab === 'user' && canViewUsers">
           <div class="panel-head">
             <h2>用户管理</h2>
             <span class="hint">公开注册只能产生学生，教师 / 管理员由这里创建</span>
@@ -608,6 +751,89 @@ onMounted(async () => {
             <button class="chip" type="button" :disabled="userPage <= 1" @click="turnUserPage(-1)">上一页</button>
             <span>第 {{ userPage }} 页 / 共 {{ userTotal }} 个账号</span>
             <button class="chip" type="button" :disabled="userPage * userPageSize >= userTotal" @click="turnUserPage(1)">下一页</button>
+          </div>
+        </section>
+
+        <!-- 权限组管理（需要 rbac:manage 权限，模型模仿禅道） -->
+        <section v-else-if="tab === 'rbac' && canManageRbac">
+          <div class="panel-head">
+            <h2>权限组（RBAC）</h2>
+            <span class="hint">用户 → 权限组 → 模块 / 方法，与禅道一致</span>
+          </div>
+
+          <div class="chips">
+            <button class="chip" type="button" @click="resetGroupForm">+ 新建权限组</button>
+            <button
+              v-for="group in rbacGroups"
+              :key="group.id"
+              :class="['chip', { active: editingGroup.id === group.id }]"
+              type="button"
+              @click="selectGroup(group)"
+            >
+              {{ group.name }}（{{ group.privileges.length }}）
+            </button>
+          </div>
+
+          <p v-if="rbacLoading" class="empty">加载中…</p>
+
+          <form class="create-plan rbac-form" @submit.prevent="submitGroup">
+            <label>
+              <span>组名称</span>
+              <input v-model="editingGroup.name" type="text" placeholder="如：教师组" />
+            </label>
+            <label>
+              <span>说明</span>
+              <input v-model="editingGroup.description" type="text" placeholder="这个组能做什么" />
+            </label>
+            <label>
+              <span>状态</span>
+              <select v-model="editingGroup.status">
+                <option value="NORMAL">启用</option>
+                <option value="DISABLED">禁用</option>
+              </select>
+            </label>
+            <button type="submit">{{ editingGroup.id ? '保存修改' : '创建权限组' }}</button>
+            <button v-if="editingGroup.id" class="link danger" type="button" @click="removeGroup(editingGroup)">
+              删除该组
+            </button>
+          </form>
+
+          <div class="rbac-grid">
+            <div v-for="module in rbacCatalog" :key="module.module" class="rbac-module">
+              <h4>{{ module.moduleLabel }} <span class="hint">{{ module.module }}</span></h4>
+              <label v-for="method in module.methods" :key="method.method" class="check rbac-check">
+                <input
+                  type="checkbox"
+                  :checked="editingGroup.privileges.includes(`${module.module}:${method.method}`)"
+                  @change="togglePriv(`${module.module}:${method.method}`)"
+                />
+                <span>
+                  {{ method.label }}
+                  <em>{{ module.module }}:{{ method.method }}</em>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel-head rbac-assign-head">
+            <h3>给用户分配权限组</h3>
+            <span class="hint">填用户 ID → 读取 → 勾选 → 保存</span>
+          </div>
+          <div class="create-plan rbac-form">
+            <label>
+              <span>用户 ID</span>
+              <input v-model="assignUserId" type="number" min="1" placeholder="如 2" />
+            </label>
+            <button class="ghost" type="button" @click="loadAssignGroups">读取当前分组</button>
+          </div>
+          <div class="chips">
+            <label v-for="group in rbacGroups" :key="group.id" class="chip rbac-chip">
+              <input v-model="assignGroupIds" type="checkbox" :value="group.id" />
+              <span>{{ group.name }}</span>
+            </label>
+            <button class="chip" type="button" :disabled="assigning" @click="submitAssign">
+              {{ assigning ? '保存中…' : '保存分组' }}
+            </button>
           </div>
         </section>
       </main>
@@ -1074,6 +1300,48 @@ onMounted(async () => {
 .pager .chip:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.rbac-form {
+  margin-bottom: 14px;
+}
+.rbac-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.rbac-module {
+  padding: 12px 14px;
+  border: 1px solid #e8edf5;
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+.rbac-module h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #16233a;
+}
+.rbac-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: #46526b;
+}
+.rbac-check em {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 11px;
+  color: #97a1b5;
+}
+.rbac-assign-head {
+  margin-top: 8px;
+}
+.rbac-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 @media (max-width: 860px) {
   .user-row {

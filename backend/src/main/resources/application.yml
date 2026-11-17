@@ -4,10 +4,10 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    # 默认连 3306；本机 MySQL 端口不是 3306 时，设置环境变量 DB_PORT（或整个 DB_URL）覆盖即可，队友无需改代码
-    url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3306}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    # 演示用默认值：本机 MySQL 3307 / root。交回仓库前改回 3306 + 123456 或用环境变量覆盖
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3307}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:123456}
+    password: ${DB_PASSWORD:root}
     hikari:
       initialization-fail-timeout: -1
 
@@ -57,7 +57,7 @@ security:
     expire-seconds: 120        # 验证码有效期（秒），一次性使用
   login:
     max-fail: 5                # 连续失败锁定阈值
-    lock-minutes: 3            # 锁定时长（分钟）
+    lock-minutes: 1            # 锁定时长（分钟）
   sms:
     expire-seconds: 300        # 短信验证码有效期（秒）
     cooldown-seconds: 60       # 同一手机号重发冷却（秒）
