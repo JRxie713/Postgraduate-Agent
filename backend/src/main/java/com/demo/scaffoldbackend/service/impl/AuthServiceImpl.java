@@ -81,7 +81,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(423, "账号已锁定，请 " + formatDuration(lockRemain) + " 后重试");
         }
 
-        // 密码登录不校验图形验证码：由失败次数锁定 + 接口限流防暴力破解，便于演示连续失败锁定
+        // 密码登录不校验图形验证码：由失败次数锁定 + 接口限流防暴力破解
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUserName, userName));
         if (user == null || !passwordEncoder.matches(dto.getPwd(), user.getPwd())) {
             int remaining = recordFailure(userName, lockKey);
