@@ -12,6 +12,7 @@ import {
   updateTaskStatus
 } from '../api/study'
 import { REFRESH_KEY, TOKEN_KEY } from '../api/http'
+import DashboardPanel from './DashboardPanel.vue'
 import {
   createGroup,
   deleteGroup,
@@ -23,7 +24,7 @@ import {
   updateGroup
 } from '../api/rbac'
 
-const emit = defineEmits(['logout', 'open-dashboard'])
+const emit = defineEmits(['logout'])
 
 const tab = ref('plan')
 const user = ref(null)
@@ -500,9 +501,9 @@ onMounted(async () => {
           </button>
           <button
             v-if="isAdmin"
-            class="nav-item"
+            :class="['nav-item', { active: tab === 'dashboard' }]"
             type="button"
-            @click="emit('open-dashboard')"
+            @click="tab = 'dashboard'"
           >
             <span class="nav-title">数据大屏</span>
             <span class="nav-desc">平台实时指标</span>
@@ -836,6 +837,9 @@ onMounted(async () => {
             </button>
           </div>
         </section>
+
+        <!-- 数据大屏（管理员） -->
+        <DashboardPanel v-else-if="tab === 'dashboard' && isAdmin" />
       </main>
     </div>
   </div>
