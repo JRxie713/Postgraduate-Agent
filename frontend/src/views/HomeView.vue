@@ -62,6 +62,7 @@ const roleText = (role) => ({ STUDENT: '学生', TEACHER: '教师', ADMIN: '管�
 const permissions = ref([])
 const hasPerm = (key) => permissions.value.includes(key)
 const isAdmin = computed(() => !!user.value && user.value.userRole === 'ADMIN')
+const isStudent = computed(() => !!user.value && user.value.userRole === 'STUDENT')
 const canPublishPolicy = computed(() => hasPerm('policy:create'))
 const canViewUsers = computed(() => hasPerm('user:view'))
 const canManageRbac = computed(() => hasPerm('rbac:manage'))
@@ -500,13 +501,13 @@ onMounted(async () => {
             <span class="nav-desc">模块 / 方法授权</span>
           </button>
           <button
-            v-if="isAdmin"
+            v-if="isAdmin || isStudent"
             :class="['nav-item', { active: tab === 'dashboard' }]"
             type="button"
             @click="tab = 'dashboard'"
           >
             <span class="nav-title">数据大屏</span>
-            <span class="nav-desc">平台实时指标</span>
+            <span class="nav-desc">{{ isAdmin ? '平台实时指标' : '我的学习数据' }}</span>
           </button>
         </nav>
       </aside>
@@ -838,8 +839,8 @@ onMounted(async () => {
           </div>
         </section>
 
-        <!-- 数据大屏（管理员） -->
-        <DashboardPanel v-else-if="tab === 'dashboard' && isAdmin" />
+        <!-- 数据大屏：管理员查看平台指标，学生仅查看本人学习数据 -->
+        <DashboardPanel v-else-if="tab === 'dashboard' && (isAdmin || isStudent)" :is-admin="isAdmin" />
       </main>
     </div>
   </div>
