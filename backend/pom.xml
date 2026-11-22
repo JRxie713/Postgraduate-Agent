@@ -116,7 +116,7 @@
             </exclusions>
         </dependency>
 
-        <!-- RabbitMQ 消息队列 -->
+        <!-- RabbitMQ 消息队列（历史保留，当前业务未使用） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-amqp</artifactId>
@@ -126,6 +126,12 @@
                     <artifactId>spring-boot-starter-logging</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <!-- Kafka 消息队列：打卡事件异步解耦（Redis 实时读写 + Kafka 异步聚合） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
 
         <!-- JWT 接口安全认证 -->

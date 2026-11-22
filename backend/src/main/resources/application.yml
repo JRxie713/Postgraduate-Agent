@@ -21,8 +21,27 @@ spring:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
       database: 0
       timeout: 3000
+
+  # Kafka：打卡事件异步消费（累计时长、缓存刷新、后续落库/通知等扩展点）
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:127.0.0.1:9092}
+    producer:
+      # 事件体以 JSON 字符串收发，序列化统一用 String，避免类型映射问题
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      retries: 3
+    consumer:
+      group-id: study-checkin-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      # Broker 暂时不可用或主题未创建时，不阻断应用启动
+      missing-topics-fatal: false
 
   rabbitmq:
     host: ${RABBITMQ_HOST:127.0.0.1}
@@ -73,8 +92,9 @@ security:
     cooldown-seconds: 60       # 同一邮箱重发冷却（秒）
   rate-limit:
     enabled: true
-    global-per-minute: 60      # 单IP每分钟请求上限
-    block-threshold: 300       # 单窗口内超过该值加入黑名单
+    # 本地联调放宽限额：单页加载会触发多条接口，60 次/分钟容易误触 429；生产环境可调回 60 / 300
+    global-per-minute: 600     # 单IP每分钟请求上限
+    block-threshold: 3000      # 单窗口内超过该值加入黑名单
     block-minutes: 10          # 黑名单封禁时长（分钟）
     ua-check-enabled: false    # 无UA拦截（默认关，避免误伤）
 logging:

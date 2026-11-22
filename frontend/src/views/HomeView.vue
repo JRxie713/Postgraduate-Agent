@@ -2,6 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { createUser, currentUser, deleteUser, logout, updateUser, userList } from '../api/auth'
 import {
+  checkin,
+  checkinOverview,
+  checkinRank,
   createPlan,
   createPlanTask,
   createPolicy,
@@ -9,6 +12,9 @@ import {
   deletePlanTask,
   myPlans,
   policyList,
+  schoolHeatCards,
+  schoolHeatMine,
+  trackSchoolHeat,
   updateTaskStatus
 } from '../api/study'
 import { REFRESH_KEY, TOKEN_KEY } from '../api/http'
@@ -42,6 +48,20 @@ const policies = ref([])
 const policyLoading = ref(false)
 const policyType = ref('')
 const policyTypes = ['', '招生', '考试', '政策', '院校']
+
+// ===== 学习打卡（Redis + Kafka）=====
+const overview = ref(null)
+const streakRank = ref([])
+const todayRank = ref([])
+const checkinForm = ref({ minutes: 30, subject: '' })
+const checkinLoading = ref(false)
+
+// ===== 院校热度（Redis + Kafka）=====
+const heatCards = ref([])
+const myTracks = ref([])
+const viewedTracks = computed(() => myTracks.value.filter((t) => t.action !== 'FOLLOW'))
+const followedTracks = computed(() => myTracks.value.filter((t) => t.action === 'FOLLOW'))
+const heatLoading = ref(false)
 
 // ===== 用户管理（管理员） =====
 const users = ref([])
@@ -210,6 +230,80 @@ async function loadPolicies() {
 function switchPolicyType(type) {
   policyType.value = type
   loadPolicies()
+}
+
+// ===== 学习打卡 =====
+async function loadCheckinOverview() {
+  if (!user.value || !user.value.id) return
+  const data = await checkinOverview(user.value.id)
+  if (data.code === 200) overview.value = data.data
+}
+
+async function loadCheckinRanks() {
+  const [s, t] = await Promise.all([checkinRank('streak'), checkinRank('today')])
+  if (s.code === 200) streakRank.value = s.data || []
+  if (t.code === 200) todayRank.value = t.data || []
+}
+
+async function submitCheckin() {
+  if (checkinLoading.value) return
+  // 登录态失效时 user 为 null，先拦住空指针，给出明确提示
+  if (!user.value || user.value.id == null) {
+    message.value = '登录状态已失效，请重新登录后再打卡'
+    return
+  }
+  message.value = ''
+  checkinLoading.value = true
+  try {
+    const minutes = Number(checkinForm.value.minutes)
+    const data = await checkin({
+      userId: user.value.id,
+      minutes,
+      subject: checkinForm.value.subject.trim()
+    })
+    if (data.code === 200) {
+      message.value = `打卡成功：今日 ${data.data.minutesToday} 分钟，已连续 ${data.data.streak} 天`
+      await Promise.all([loadCheckinOverview(), loadCheckinRanks()])
+    } else {
+      message.value = data.message || '打卡失败'
+    }
+  } finally {
+    checkinLoading.value = false
+  }
+}
+
+// ===== 院校热度 =====
+async function loadSchoolHeat() {
+  heatLoading.value = true
+  try {
+    const userId = user.value && user.value.id != null ? user.value.id : null
+    const cards = await schoolHeatCards(userId)
+    if (cards.code === 200) heatCards.value = cards.data || []
+    if (userId != null) {
+      const mine = await schoolHeatMine(userId)
+      if (mine.code === 200) myTracks.value = mine.data || []
+    }
+  } finally {
+    heatLoading.value = false
+  }
+}
+
+async function trackSchool(card, action) {
+  if (!user.value || user.value.id == null) {
+    message.value = '登录状态已失效，请重新登录后再操作'
+    return
+  }
+  const data = await trackSchoolHeat({
+    userId: user.value.id,
+    schoolId: card.schoolId,
+    schoolName: card.schoolName,
+    action
+  })
+  if (data.code === 200) {
+    await loadSchoolHeat()
+  } else {
+    message.value = data.message || '操作失败'
+  }
 }
 
 async function submitPolicy() {
@@ -451,6 +545,7 @@ onMounted(async () => {
   await Promise.all(isAdmin.value ? [loadPolicies()] : [loadPlans(), loadPolicies()])
   if (canViewUsers.value) await loadUsers()
   if (canManageRbac.value) await loadRbac()
+  await Promise.all([loadCheckinOverview(), loadCheckinRanks(), loadSchoolHeat()])
 })
 </script>
 
@@ -478,9 +573,22 @@ onMounted(async () => {
             <span class="nav-title">学习计划</span>
             <span class="nav-desc">拆任务、看进度</span>
           </button>
+          <button :class="['nav-item', { active: tab === 'checkin' }]" type="button" @click="tab = 'checkin'">
+            <span class="nav-title">学习打卡</span>
+            <span class="nav-desc">时长 / 连续天数 / 榜单</span>
+          </button>
           <button :class="['nav-item', { active: tab === 'policy' }]" type="button" @click="tab = 'policy'">
             <span class="nav-title">政策资讯</span>
             <span class="nav-desc">招生 / 考试 / 院校</span>
+          </button>
+          <button
+            v-if="isAdmin || isStudent"
+            :class="['nav-item', { active: tab === 'school' }]"
+            type="button"
+            @click="tab = 'school'"
+          >
+            <span class="nav-title">院校热度</span>
+            <span class="nav-desc">浏览 / 关注 / 我的明细</span>
           </button>
           <button
             v-if="canViewUsers"
@@ -591,6 +699,117 @@ onMounted(async () => {
               <button type="button" @click="addTask(plan.id)">添加任务</button>
             </div>
           </article>
+        </section>
+
+        <!-- 学习打卡（Redis + Kafka） -->
+        <section v-else-if="tab === 'checkin'">
+          <div class="panel-head">
+            <h2>学习打卡</h2>
+            <span class="hint">Redis 实时计数 · Kafka 异步累计历史时长</span>
+          </div>
+
+          <div class="checkin-cards">
+            <div class="checkin-card">
+              <p class="checkin-num">{{ overview?.minutesToday ?? 0 }}</p>
+              <p class="checkin-label">今日学习（分钟）</p>
+            </div>
+            <div class="checkin-card">
+              <p class="checkin-num">{{ overview?.streak ?? 0 }}</p>
+              <p class="checkin-label">连续打卡（天）</p>
+            </div>
+            <div class="checkin-card">
+              <p class="checkin-num">{{ overview?.totalMinutes ?? 0 }}</p>
+              <p class="checkin-label">历史总时长（分钟）</p>
+            </div>
+            <div class="checkin-card">
+              <p class="checkin-num">{{ overview?.rank ?? '—' }}</p>
+              <p class="checkin-label">当前名次</p>
+            </div>
+          </div>
+
+          <form class="create-plan checkin-form" @submit.prevent="submitCheckin">
+            <label>
+              <span>学习分钟数</span>
+              <input v-model.number="checkinForm.minutes" type="number" min="1" max="1440" />
+            </label>
+            <label>
+              <span>科目（可选）</span>
+              <input v-model="checkinForm.subject" type="text" placeholder="数学 / 英语…" />
+            </label>
+            <button type="submit" :disabled="checkinLoading">
+              {{ checkinLoading ? '提交中…' : '打卡' }}
+            </button>
+          </form>
+
+          <div class="checkin-ranks">
+            <article class="rank-card">
+              <h3>连续打卡榜</h3>
+              <ul>
+                <li v-for="item in streakRank" :key="'s-' + item.userId">
+                  <span class="rank-no">{{ item.rank }}</span>
+                  <span>用户 {{ item.userId }}</span>
+                  <span class="rank-score">{{ item.score }} 天</span>
+                </li>
+                <li v-if="!streakRank.length" class="empty-line">暂无数据</li>
+              </ul>
+            </article>
+            <article class="rank-card">
+              <h3>今日时长榜</h3>
+              <ul>
+                <li v-for="item in todayRank" :key="'t-' + item.userId">
+                  <span class="rank-no">{{ item.rank }}</span>
+                  <span>用户 {{ item.userId }}</span>
+                  <span class="rank-score">{{ item.score }} 分钟</span>
+                </li>
+                <li v-if="!todayRank.length" class="empty-line">暂无数据</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <!-- 院校热度（Redis + Kafka） -->
+        <section v-else-if="tab === 'school'">
+          <div class="panel-head">
+            <h2>院校热度</h2>
+            <span class="hint">Redis 实时去重计数 · Kafka 异步聚合；热门排行见数据大屏</span>
+          </div>
+
+          <div class="heat-options">
+            <article v-for="card in heatCards" :key="card.schoolId" class="heat-option">
+              <div class="heat-option-name">{{ card.schoolName }}</div>
+              <div class="heat-option-meta">关注 {{ card.follows }} 人</div>
+              <div class="heat-option-actions">
+                <button type="button" @click="trackSchool(card, 'VIEW')">浏览</button>
+                <button
+                  type="button"
+                  :class="card.followed ? 'unfollow' : 'follow'"
+                  @click="trackSchool(card, card.followed ? 'UNFOLLOW' : 'FOLLOW')"
+                >{{ card.followed ? '取关' : '关注' }}</button>
+              </div>
+            </article>
+          </div>
+
+          <div class="rank-card heat-mine">
+            <h3>今天浏览的院校</h3>
+            <ul>
+              <li v-for="item in viewedTracks" :key="item.schoolName + item.action">
+                <span>{{ item.schoolName }}</span>
+                <span class="rank-meta">浏览</span>
+              </li>
+              <li v-if="!viewedTracks.length" class="empty-line">今天还没有浏览院校</li>
+            </ul>
+          </div>
+
+          <div class="rank-card heat-mine">
+            <h3>今天关注的院校</h3>
+            <ul>
+              <li v-for="item in followedTracks" :key="item.schoolName + item.action">
+                <span>{{ item.schoolName }}</span>
+                <span class="rank-meta">关注</span>
+              </li>
+              <li v-if="!followedTracks.length" class="empty-line">今天还没有关注院校</li>
+            </ul>
+          </div>
         </section>
 
         <!-- 政策资讯 -->
@@ -1215,6 +1434,131 @@ onMounted(async () => {
 .publish-hint {
   display: block;
   margin-bottom: 14px;
+}
+
+/* 学习打卡 */
+.checkin-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.checkin-card {
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #e8edf5;
+  border-radius: 12px;
+  text-align: center;
+}
+.checkin-num {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #2f6fe4;
+}
+.checkin-label {
+  margin: 0;
+  font-size: 12px;
+  color: #7a869a;
+}
+.checkin-form {
+  margin-bottom: 16px;
+}
+.checkin-ranks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.rank-card {
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #e8edf5;
+  border-radius: 12px;
+}
+.rank-card h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #16233a;
+}
+.rank-card ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.rank-card li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #16233a;
+}
+.rank-no {
+  width: 22px;
+  color: #7a869a;
+}
+.rank-score {
+  margin-left: auto;
+  color: #2f6fe4;
+}
+.empty-line {
+  color: #97a1b5;
+  font-size: 13px;
+}
+.heat-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.heat-option {
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid #e8edf5;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.heat-option-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #16233a;
+}
+.heat-option-meta {
+  font-size: 12px;
+  color: #7a869a;
+}
+.heat-option-actions {
+  display: flex;
+  gap: 8px;
+}
+.heat-option-actions button {
+  padding: 6px 12px;
+  border: 1px solid #dde4ee;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #1c4fb8;
+  font-size: 12px;
+  cursor: pointer;
+}
+.heat-option-actions button.follow {
+  background: #2f6fe4;
+  border-color: #2f6fe4;
+  color: #ffffff;
+}
+.heat-option-actions button.unfollow {
+  background: #ffffff;
+  border-color: #c9d3e2;
+  color: #5a6b85;
+}
+.rank-meta {
+  font-size: 12px;
+  color: #7a869a;
+}
+.heat-mine {
+  margin-top: 16px;
 }
 .user-form {
   margin-bottom: 6px;

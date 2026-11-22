@@ -62,6 +62,8 @@ public class SecurityConfig {
                         "/api/user/captcha", "/api/user/login/status",
                         "/api/user/sms-code", "/api/user/login/sms",
                         "/api/user/email-code", "/api/user/login/email").permitAll()
+                // 学习打卡演示模块（Redis + Kafka）：本地联调放开，生产环境可移除该行并改为登录鉴权
+                .requestMatchers("/api/study-checkin/**", "/checkin.html").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
