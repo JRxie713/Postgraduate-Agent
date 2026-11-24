@@ -78,7 +78,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private boolean shouldSkip(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/actuator");
+        String uri = request.getRequestURI();
+        // WebSocket 握手只发生一次，不参与 REST 限流；健康检查也跳过
+        return uri.startsWith("/actuator") || uri.startsWith("/ws");
     }
 
     private boolean isBlank(String s) {

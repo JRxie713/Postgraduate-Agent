@@ -60,6 +60,27 @@ public class JwtUtil {
         return Jwts.parser().verifyWith(key()).build().parseSignedClaims(token).getPayload();
     }
 
+    /** 签发本地文件临时下载票据（subject 为存储 key，type=file） */
+    public String issueFileTicket(String storageKey, long expireSeconds) {
+        return Jwts.builder()
+                .id(UUID.randomUUID().toString())
+                .subject(storageKey)
+                .claim("type", "file")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + expireSeconds * 1000))
+                .signWith(key())
+                .compact();
+    }
+
+    /** 校验本地文件下载票据，返回存储 key；非法或过期抛异常 */
+    public String parseFileTicket(String token) {
+        Claims claims = parse(token);
+        if (!"file".equals(claims.get("type", String.class))) {
+            throw new IllegalArgumentException("非文件下载令牌");
+        }
+        return claims.getSubject();
+    }
+
     public long getAccessExpire() {
         return accessExpire;
     }

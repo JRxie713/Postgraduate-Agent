@@ -15,6 +15,12 @@ export default defineConfig({
         changeOrigin: true,
         // 将访问者的 IP 传给后端，避免所有经 Vite 转发的组员共用 127.0.0.1 限流计数。
         xfwd: true
+      },
+      // WebSocket 握手与 STOMP 长连接
+      '/ws': {
+        target: 'ws://127.0.0.1:8080',
+        ws: true,
+        changeOrigin: true
       }
     }
   }

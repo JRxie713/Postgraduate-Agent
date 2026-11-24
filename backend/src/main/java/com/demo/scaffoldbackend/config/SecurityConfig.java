@@ -64,6 +64,8 @@ public class SecurityConfig {
                         "/api/user/email-code", "/api/user/login/email").permitAll()
                 // 学习打卡演示模块（Redis + Kafka）：本地联调放开，生产环境可移除该行并改为登录鉴权
                 .requestMatchers("/api/study-checkin/**", "/checkin.html").permitAll()
+                // WebSocket 握手使用一次性票据自行鉴权；本地文件下载使用带签名的临时令牌
+                .requestMatchers("/ws", "/ws/**", "/api/chat/files/raw").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()

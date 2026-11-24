@@ -1,6 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createUser, currentUser, deleteUser, logout, updateUser, userList } from '../api/auth'
+import ChatPanel from '../components/chat/ChatPanel.vue'
+import { chat, connect as connectChat, disconnect as disconnectChat } from '../chat/store'
 import {
   checkin,
   checkinOverview,
@@ -430,6 +432,7 @@ function turnUserPage(delta) {
 }
 
 async function doLogout() {
+  disconnectChat()
   await logout()
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(REFRESH_KEY)
@@ -542,10 +545,15 @@ async function submitAssign() {
 
 onMounted(async () => {
   await loadUser()
+  if (user.value && user.value.id) connectChat(user.value.id)
   await Promise.all(isAdmin.value ? [loadPolicies()] : [loadPlans(), loadPolicies()])
   if (canViewUsers.value) await loadUsers()
   if (canManageRbac.value) await loadRbac()
   await Promise.all([loadCheckinOverview(), loadCheckinRanks(), loadSchoolHeat()])
+})
+
+onUnmounted(() => {
+  disconnectChat()
 })
 </script>
 
@@ -572,6 +580,13 @@ onMounted(async () => {
           <button v-if="!isAdmin" :class="['nav-item', { active: tab === 'plan' }]" type="button" @click="tab = 'plan'">
             <span class="nav-title">学习计划</span>
             <span class="nav-desc">拆任务、看进度</span>
+          </button>
+          <button :class="['nav-item', { active: tab === 'chat' }]" type="button" @click="tab = 'chat'">
+            <span class="nav-title">
+              实时消息
+              <span v-if="chat.totalUnread" class="nav-badge">{{ chat.totalUnread > 99 ? '99+' : chat.totalUnread }}</span>
+            </span>
+            <span class="nav-desc">导师私聊 / 自习室</span>
           </button>
           <button :class="['nav-item', { active: tab === 'checkin' }]" type="button" @click="tab = 'checkin'">
             <span class="nav-title">学习打卡</span>
@@ -623,8 +638,13 @@ onMounted(async () => {
       <main class="panel">
         <p v-if="message" class="message">{{ message }}</p>
 
+        <!-- 实时消息 -->
+        <section v-if="tab === 'chat'">
+          <ChatPanel :user="user" />
+        </section>
+
         <!-- 学习计划 -->
-        <section v-if="tab === 'plan' && !isAdmin">
+        <section v-else-if="tab === 'plan' && !isAdmin">
           <div class="panel-head">
             <h2>学习计划</h2>
             <span class="hint">勾选任务即可自动统计完成率</span>
@@ -1161,8 +1181,24 @@ onMounted(async () => {
   background: #eef4ff;
 }
 .nav-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 14px;
   color: #16233a;
+}
+.nav-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4a5a;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
 }
 .nav-desc {
   font-size: 12px;

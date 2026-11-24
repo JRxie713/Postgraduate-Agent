@@ -13,6 +13,10 @@ target
 .env
 backend/.env
 
+# 本机聊天附件（chat.storage.type=local）
+data/chat-files
+backend/data/chat-files
+
 # 系统/编辑器文件
 .DS_Store
 Thumbs.db
