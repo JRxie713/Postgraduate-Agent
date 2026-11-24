@@ -22,6 +22,9 @@ public class UserVO {
     /** 联系电话 */
     private String phone;
 
+    /** 电子邮箱 */
+    private String email;
+
     /** 角色：STUDENT/TEACHER/ADMIN */
     private String userRole;
 

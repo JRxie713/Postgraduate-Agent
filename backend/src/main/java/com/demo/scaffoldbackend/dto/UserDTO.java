@@ -20,6 +20,9 @@ public class UserDTO {
     /** 联系电话 */
     private String phone;
 
+    /** 电子邮箱 */
+    private String email;
+
     /** 角色：STUDENT/TEACHER/ADMIN */
     private String userRole;
 
@@ -34,4 +37,10 @@ public class UserDTO {
 
     /** 账号状态 */
     private String userStatus;
+
+    /** 验证码标识（注册时校验） */
+    private String captchaId;
+
+    /** 图形验证码（注册时校验） */
+    private String captchaCode;
 }

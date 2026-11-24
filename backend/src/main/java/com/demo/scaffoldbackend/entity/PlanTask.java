@@ -1,5 +1,7 @@
 package com.demo.scaffoldbackend.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -11,6 +13,7 @@ import java.time.LocalDateTime;
 public class PlanTask {
 
     /** 主键 */
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
     /** 计划ID */

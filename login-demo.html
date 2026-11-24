@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RBAC 安全演示台</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449;
+    --border: #334155; --text: #e2e8f0; --muted: #94a3b8;
+    --accent: #38bdf8; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .url-box { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .url-box input { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; width: 240px; font-size: 13px; }
+  main { display: grid; grid-template-columns: 360px 1fr; gap: 20px; padding: 24px 28px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .card h2 { font-size: 14px; margin: 0 0 14px; color: var(--accent); }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field input { width: 100%; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 13px; }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  button { cursor: pointer; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 9px 12px; border-radius: 7px; font-size: 13px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #06283d; border-color: var(--accent); font-weight: 600; }
+  button.danger { background: #7f1d1d; border-color: #b91c1c; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .token { background: #0b1220; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; word-break: break-all; margin-top: 10px; max-height: 150px; overflow: auto; color: var(--muted); }
+  .token b { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .grid button { text-align: left; display: flex; flex-direction: column; gap: 3px; }
+  .grid button small { color: var(--muted); font-weight: normal; font-size: 11px; }
+  #log { margin-top: 20px; background: #0b1220; border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 320px; overflow: auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .entry { border-bottom: 1px solid #1f2a3d; padding: 7px 0; }
+  .entry .meta { color: var(--muted); font-size: 11px; }
+  .entry .status { display: inline-block; padding: 0 7px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .s2xx { background: #052e16; color: var(--ok); }
+  .s4xx { background: #451a03; color: var(--warn); }
+  .s5xx { background: #450a0a; color: var(--err); }
+  .entry pre { margin: 5px 0 0; white-space: pre-wrap; word-break: break-all; color: var(--text); font-size: 11px; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🔐 RBAC 安全演示台</h1>
+    <div class="sub">登录校验 · JWT 认证 · 角色授权 · 失败锁定 · 反爬限流</div>
+  </div>
+  <div class="url-box">
+    <span class="sub">后端地址</span>
+    <input id="baseUrl" value="http://localhost:8080" />
+  </div>
+</header>
+
+<main>
+  <!-- 左：登录 / 注册 / 令牌 -->
+  <section class="card">
+    <h2>① 登录 / 注册</h2>
+    <div class="field">
+      <label>登录账号 userName</label>
+      <input id="userName" placeholder="例如 student001" />
+    </div>
+    <div class="field">
+      <label>密码 pwd</label>
+      <input id="pwd" type="password" placeholder="至少 6 位" />
+    </div>
+    <div class="row">
+      <button class="primary" id="btnLogin" onclick="login()">登录</button>
+      <button id="btnRegister" onclick="register()">注册测试账号(STUDENT)</button>
+    </div>
+
+    <h2 style="margin-top:20px">当前令牌</h2>
+    <div class="token" id="tokenBox">
+      尚未登录<br/>登录后此处显示 accessToken / refreshToken
+    </div>
+  </section>
+
+  <!-- 右：演示动作 -->
+  <section class="card">
+    <h2>② 演示动作</h2>
+    <div class="grid">
+      <button onclick="current(true)">获取当前用户 <small>GET /api/user/current · 带令牌</small></button>
+      <button onclick="current(false)">无令牌访问(应 401) <small>GET /api/user/current · 不带令牌</small></button>
+      <button onclick="stat()">访问统计接口(应 403) <small>GET /api/stat/overview · 学生无权限</small></button>
+      <button onclick="refresh()">刷新令牌 <small>POST /api/user/refresh · 轮换</small></button>
+      <button class="danger" onclick="failLogin()">连续错误登录×5 <small>POST /api/user/login · 触发 423 锁定</small></button>
+      <button class="danger" onclick="spam()">连发 70 次请求 <small>GET /api/user/check · 触发 429 限流</small></button>
+      <button onclick="logout()">退出登录 <small>POST /api/user/logout · 会话失效</small></button>
+      <button onclick="clearLog()">清空日志</button>
+    </div>
+    <div class="hint">
+      提示：先「注册测试账号」→ 再「登录」拿到令牌，即可依次体验带令牌访问、403、刷新、退出。
+      「连续错误登录」和「连发 70 次」无需登录，可直接触发 423 / 429。
+    </div>
+    <h2 style="margin-top:20px">响应日志</h2>
+    <div id="log"><div class="hint">等待请求…</div></div>
+  </section>
+</main>
+
+<script>
+const state = { accessToken: '', refreshToken: '', expiresIn: 0 };
+
+function base() {
+  return document.getElementById('baseUrl').value.replace(/\/+$/, '');
+}
+
+async function req(method, path, body, useAuth) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (useAuth && state.accessToken) headers['Authorization'] = 'Bearer ' + state.accessToken;
+  const res = await fetch(base() + path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* 非 JSON */ }
+  log(method, path, res.status, data);
+  return { status: res.status, data };
+}
+
+// ===== 各动作 =====
+
+async function login() {
+  const userName = val('userName'), pwd = val('pwd');
+  if (!userName || !pwd) return alert('请填写账号和密码');
+  const { status, data } = await req('POST', '/api/user/login', { userName, pwd });
+  if (status === 200 && data && data.code === 200 && data.data) {
+    state.accessToken = data.data.accessToken;
+    state.refreshToken = data.data.refreshToken;
+    state.expiresIn = data.data.expiresIn;
+    renderToken();
+  }
+}
+
+async function register() {
+  const userName = val('userName'), pwd = val('pwd');
+  if (!userName || !pwd) return alert('请填写账号和密码');
+  const { data } = await req('POST', '/api/user/register', { userName, pwd });
+  if (data && data.code === 200) log('info', '注册成功，账号角色为 STUDENT，可直接点「登录」', 200, data);
+}
+
+async function current(useAuth) {
+  await req('GET', '/api/user/current', null, useAuth);
+}
+
+async function stat() {
+  await req('GET', '/api/stat/overview?range=WEEK', null, true);
+}
+
+async function refresh() {
+  if (!state.refreshToken) return alert('请先登录');
+  const { status, data } = await req('POST', '/api/user/refresh', { refreshToken: state.refreshToken });
+  if (status === 200 && data && data.code === 200 && data.data) {
+    state.accessToken = data.data.accessToken;
+    state.refreshToken = data.data.refreshToken;
+    renderToken();
+  }
+}
+
+async function logout() {
+  await req('POST', '/api/user/logout', null, true);
+  state.accessToken = ''; state.refreshToken = ''; state.expiresIn = 0;
+  renderToken();
+}
+
+async function failLogin() {
+  const name = 'locktest_' + Date.now();
+  for (let i = 1; i <= 5; i++) {
+    await req('POST', '/api/user/login', { userName: name, pwd: 'wrong-pwd' });
+  }
+  log('info', '第 5 次失败已触发锁定，可再点一次「登录」看 423（账号已锁定）', 200, null);
+}
+
+async function spam() {
+  log('info', '开始连发 70 次请求…', 0, null);
+  for (let i = 1; i <= 70; i++) {
+    const res = await fetch(base() + '/api/user/check?userName=spam_' + i);
+    if (res.status === 429) {
+      log('info', `第 ${i} 次请求返回 429，反爬限流已生效`, 429, null);
+      return;
+    }
+  }
+  log('info', '70 次请求均未触发限流（可能已跨分钟窗口）', 200, null);
+}
+
+// ===== 展示 =====
+
+function renderToken() {
+  const box = document.getElementById('tokenBox');
+  if (!state.accessToken) {
+    box.innerHTML = '尚未登录<br/>登录后此处显示 accessToken / refreshToken';
+    return;
+  }
+  box.innerHTML =
+    '<b>accessToken</b>(' + state.expiresIn + 's)<br/>' + state.accessToken +
+    '<br/><br/><b>refreshToken</b><br/>' + state.refreshToken;
+}
+
+function log(method, path, status, body) {
+  const el = document.getElementById('log');
+  if (el.querySelector('.hint')) el.innerHTML = '';
+  const entry = document.createElement('div');
+  entry.className = 'entry';
+  const cls = status >= 500 ? 's5xx' : status >= 400 ? 's4xx' : 's2xx';
+  const st = status === 0 ? 'INFO' : status;
+  const clsFor0 = status === 0 ? 's2xx' : cls;
+  entry.innerHTML =
+    '<div class="meta">' + new Date().toLocaleTimeString() + ' · <b>' + method + '</b> ' + path +
+    ' &nbsp;<span class="status ' + clsFor0 + '">' + st + '</span></div>' +
+    '<pre>' + escapeHtml(JSON.stringify(body, null, 2)) + '</pre>';
+  el.insertBefore(entry, el.firstChild);
+}
+
+function escapeHtml(s) {
+  if (s == null) return '—';
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '<div class="hint">等待请求…</div>';
+}
+
+function val(id) { return document.getElementById(id).value.trim(); }
+</script>
+</body>
+</html>

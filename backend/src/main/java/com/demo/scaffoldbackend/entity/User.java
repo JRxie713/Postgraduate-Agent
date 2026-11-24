@@ -1,5 +1,7 @@
 package com.demo.scaffoldbackend.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -11,6 +13,7 @@ import java.time.LocalDateTime;
 public class User {
 
     /** 主键 */
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
     /** 登录账号 */
@@ -24,6 +27,9 @@ public class User {
 
     /** 联系电话 */
     private String phone;
+
+    /** 电子邮箱 */
+    private String email;
 
     /** 角色：STUDENT/TEACHER/ADMIN */
     private String userRole;

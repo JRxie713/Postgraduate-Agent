@@ -2,6 +2,7 @@
 frontend/node_modules
 frontend/dist
 frontend/.vite
+frontend/certs
 
 # SpringBoot后端忽略
 target
