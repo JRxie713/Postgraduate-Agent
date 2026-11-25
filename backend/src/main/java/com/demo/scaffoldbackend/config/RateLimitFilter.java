@@ -21,18 +21,23 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper;
     private final boolean enabled;
     private final long globalPerMinute;
+    private final long filePerMinute;
     private final long blockThreshold;
+    private final long fileBlockThreshold;
     private final long blockMinutes;
     private final boolean uaCheckEnabled;
 
     public RateLimitFilter(StringRedisTemplate redis, ObjectMapper objectMapper,
-                           boolean enabled, long globalPerMinute, long blockThreshold,
+                           boolean enabled, long globalPerMinute, long filePerMinute,
+                           long blockThreshold, long fileBlockThreshold,
                            long blockMinutes, boolean uaCheckEnabled) {
         this.redis = redis;
         this.objectMapper = objectMapper;
         this.enabled = enabled;
         this.globalPerMinute = globalPerMinute;
+        this.filePerMinute = filePerMinute;
         this.blockThreshold = blockThreshold;
+        this.fileBlockThreshold = fileBlockThreshold;
         this.blockMinutes = blockMinutes;
         this.uaCheckEnabled = uaCheckEnabled;
     }
@@ -46,6 +51,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
         String ip = clientIp(request);
 
+        // 文件接口（分片上传/下载）天然高频，给一份单独的、更宽但仍有上限的配额，
+        // 不再像以前那样整体豁免，避免上传接口被打成免限流的写盘入口
+        boolean fileApi = request.getRequestURI().startsWith("/api/file");
+        long limit = fileApi ? filePerMinute : globalPerMinute;
+        long blockAt = fileApi ? fileBlockThreshold : blockThreshold;
+
         // IP 黑名单
         if (Boolean.TRUE.equals(redis.hasKey("blacklist:ip:" + ip))) {
             writeJson(response, HttpServletResponse.SC_FORBIDDEN, 403, "访问过于频繁，已被临时封禁");
@@ -58,19 +69,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 固定窗口限流（按分钟）
+        // 固定窗口限流（按分钟），普通接口和文件接口各用一个计数桶
         long window = System.currentTimeMillis() / 60000L;
-        String key = "ratelimit:" + ip + ":" + window;
+        String key = "ratelimit:" + (fileApi ? "file:" : "api:") + ip + ":" + window;
         Long count = redis.opsForValue().increment(key);
         if (count != null && count == 1L) {
             redis.expire(key, Duration.ofMinutes(1));
         }
-        if (count != null && count > blockThreshold) {
+        if (count != null && count > blockAt) {
             redis.opsForValue().set("blacklist:ip:" + ip, "blocked", Duration.ofMinutes(blockMinutes));
             writeJson(response, 429, 429, "访问过于频繁，已被临时封禁");
             return;
         }
-        if (count != null && count > globalPerMinute) {
+        if (count != null && count > limit) {
             writeJson(response, 429, 429, "请求过于频繁，请稍后再试");
             return;
         }
@@ -79,9 +90,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private boolean shouldSkip(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        // 文件传输是长连接/多请求场景：一个大文件会产生上百个分片请求，
-        // 走普通接口的「每分钟 60 次」限流会误伤，单独豁免
-        return uri.startsWith("/actuator") || uri.startsWith("/api/file");
+        // 只有健康检查完全跳过；文件接口不再豁免，改为在 doFilterInternal 里用独立配额
+        return uri.startsWith("/actuator");
     }
 
     private boolean isBlank(String s) {

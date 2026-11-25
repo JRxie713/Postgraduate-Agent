@@ -42,12 +42,14 @@ public class SecurityConfig {
                                                    StringRedisTemplate redis,
                                                    @Value("${security.rate-limit.enabled:true}") boolean rateEnabled,
                                                    @Value("${security.rate-limit.global-per-minute:60}") long globalPerMinute,
+                                                   @Value("${security.rate-limit.file-per-minute:1200}") long filePerMinute,
                                                    @Value("${security.rate-limit.block-threshold:300}") long blockThreshold,
+                                                   @Value("${security.rate-limit.file-block-threshold:6000}") long fileBlockThreshold,
                                                    @Value("${security.rate-limit.block-minutes:10}") long blockMinutes,
                                                    @Value("${security.rate-limit.ua-check-enabled:false}") boolean uaCheckEnabled) throws Exception {
         // 直接实例化，避免 Filter 以 Bean 形式被 Boot 再注册一次导致重复执行
         RateLimitFilter rateLimitFilter = new RateLimitFilter(redis, objectMapper, rateEnabled,
-                globalPerMinute, blockThreshold, blockMinutes, uaCheckEnabled);
+                globalPerMinute, filePerMinute, blockThreshold, fileBlockThreshold, blockMinutes, uaCheckEnabled);
         JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis);
 
         http.csrf(csrf -> csrf.disable())

@@ -5,6 +5,7 @@ import com.demo.scaffoldbackend.vo.FileCheckVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,7 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -62,12 +63,35 @@ public class FileChunkServiceImpl implements FileChunkService {
      */
     private static final String HASH_SUFFIX = ".sha256";
 
-    /** 每个文件一把锁：防止同一个文件被并发合并两次 */
-    private final ConcurrentHashMap<String, Object> mergeLocks = new ConcurrentHashMap<>();
+    /** 合并锁池大小：固定 64 把锁按 fileId 散列，避免 map + remove 的竞态和长期泄漏 */
+    private static final int MERGE_LOCK_COUNT = 64;
+
+    /** 同一个文件的合并过程串行化；不同文件偶尔共用一把锁只影响并发度，不影响正确性 */
+    private final Object[] mergeLocks = createMergeLocks();
+
+    private static Object[] createMergeLocks() {
+        Object[] locks = new Object[MERGE_LOCK_COUNT];
+        for (int i = 0; i < MERGE_LOCK_COUNT; i++) {
+            locks[i] = new Object();
+        }
+        return locks;
+    }
 
     /** 文件存到哪个目录，在 application.yml 的 file.upload.root 里配 */
     @Value("${file.upload.root}")
     private String uploadRoot;
+
+    /** 单文件允许的最大分片数：fileId 和 totalChunks 都来自客户端，必须设上限 */
+    @Value("${file.upload.max-chunks:10000}")
+    private int maxChunks;
+
+    /** 合并后单文件体积上限（MB） */
+    @Value("${file.upload.max-merged-mb:2048}")
+    private long maxMergedMb;
+
+    /** 未完成的分片保留多久（小时），超过就由定时任务清掉 */
+    @Value("${file.upload.chunk-ttl-hours:24}")
+    private long chunkTtlHours;
 
     // ==================== 对外三个方法 ====================
 
@@ -131,6 +155,9 @@ public class FileChunkServiceImpl implements FileChunkService {
         if (chunkIndex == null || chunkIndex < 1) {
             throw new IllegalArgumentException("分片序号必须从 1 开始");
         }
+        if (chunkIndex > maxChunks) {
+            throw new IllegalArgumentException("分片序号不能超过 " + maxChunks);
+        }
         if (chunk == null || chunk.isEmpty()) {
             throw new IllegalArgumentException("分片内容为空");
         }
@@ -169,7 +196,7 @@ public class FileChunkServiceImpl implements FileChunkService {
         checkTotalChunks(totalChunks);
 
         // 同一个文件的合并过程串行化
-        Object lock = mergeLocks.computeIfAbsent(id, k -> new Object());
+        Object lock = mergeLocks[Math.floorMod(id.hashCode(), MERGE_LOCK_COUNT)];
         synchronized (lock) {
             try {
                 Path dir = chunkDir(id);
@@ -209,7 +236,17 @@ public class FileChunkServiceImpl implements FileChunkService {
                     throw new IllegalArgumentException("分片校验失败，需重传第 " + corrupt + " 片");
                 }
 
-                // 3. 给合并后的文件起名，规则和普通上传保持一致
+                // 3. 合并前先算总体积：总量设上限，防止用大量分片绕过单请求 20MB 的限制把磁盘写满
+                long plannedBytes = 0;
+                for (int i = 1; i <= totalChunks; i++) {
+                    plannedBytes += Files.size(dir.resolve(partName(i)));
+                }
+                long maxBytes = maxMergedMb * 1024 * 1024;
+                if (plannedBytes > maxBytes) {
+                    throw new IllegalArgumentException("合并后的文件不能超过 " + maxMergedMb + " MB");
+                }
+
+                // 4. 给合并后的文件起名，规则和普通上传保持一致
                 String originalName = (fileName == null || fileName.isBlank()) ? "file" : fileName;
                 String safeName = originalName.replaceAll("[\\\\/:*?\"<>|]", "_");
                 String storedName = UUID.randomUUID().toString().substring(0, 8) + "_" + safeName;
@@ -218,7 +255,7 @@ public class FileChunkServiceImpl implements FileChunkService {
                 Files.createDirectories(outDir);
                 Path target = outDir.resolve(storedName);
 
-                // 4. 按 1,2,3... 的顺序把分片首尾相接写进目标文件
+                // 5. 按 1,2,3... 的顺序把分片首尾相接写进目标文件
                 long totalBytes = 0;
                 try (FileChannel out = FileChannel.open(target,
                         StandardOpenOption.CREATE,
@@ -237,16 +274,62 @@ public class FileChunkServiceImpl implements FileChunkService {
                     }
                 }
 
-                // 5. 合并成功，把分片目录删掉，否则磁盘会越积越多
+                // 6. 合并成功，把分片目录删掉，否则磁盘会越积越多
                 deleteDirectory(dir);
 
                 log.info("合并完成：fileId={} -> {}（共 {} 片 / {} 字节）", id, storedName, totalChunks, totalBytes);
                 return "/api/file/download/" + storedName;
 
             } finally {
-                mergeLocks.remove(id);
+                // 锁来自固定锁池，无需移除；这样就不存在「A 刚 remove、B 又新建一把锁」的并发窗口
             }
         }
+    }
+
+    // ==================== 过期分片清理 ====================
+
+    /**
+     * 定期清理「传了一半就没人管」的分片目录。
+     * 判断依据是目录里文件的最后修改时间：仍在续传的任务每传一片都会刷新 mtime，不会被误删。
+     */
+    @Scheduled(fixedDelayString = "${file.upload.chunk-clean-interval-ms:3600000}",
+            initialDelayString = "${file.upload.chunk-clean-initial-delay-ms:600000}")
+    public void cleanExpiredChunks() {
+        Path root = Paths.get(uploadRoot).toAbsolutePath().normalize().resolve(CHUNK_DIR_NAME);
+        if (!Files.isDirectory(root)) {
+            return;
+        }
+        long deadline = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(Math.max(1, chunkTtlHours));
+        int removed = 0;
+        try (Stream<Path> dirs = Files.list(root)) {
+            for (Path dir : dirs.filter(Files::isDirectory).toList()) {
+                try {
+                    long newest = newestModified(dir);
+                    if (newest > 0 && newest < deadline) {
+                        deleteDirectory(dir);
+                        removed++;
+                    }
+                } catch (IOException e) {
+                    log.warn("清理分片目录失败：{}", dir, e);
+                }
+            }
+        } catch (IOException e) {
+            log.warn("扫描分片目录失败：{}", root, e);
+        }
+        if (removed > 0) {
+            log.info("分片清理完成：删除 {} 个超过 {} 小时未更新的上传任务", removed, chunkTtlHours);
+        }
+    }
+
+    /** 目录里最新的文件修改时间，0 表示空目录 */
+    private long newestModified(Path dir) throws IOException {
+        long newest = 0;
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path p : files.toList()) {
+                newest = Math.max(newest, Files.getLastModifiedTime(p).toMillis());
+            }
+        }
+        return newest;
     }
 
     // ==================== 内部小工具 ====================
@@ -262,6 +345,9 @@ public class FileChunkServiceImpl implements FileChunkService {
     private void checkTotalChunks(Integer totalChunks) {
         if (totalChunks == null || totalChunks < 1) {
             throw new IllegalArgumentException("分片总数必须大于 0");
+        }
+        if (totalChunks > maxChunks) {
+            throw new IllegalArgumentException("分片总数不能超过 " + maxChunks);
         }
     }
 

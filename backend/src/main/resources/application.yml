@@ -21,7 +21,8 @@ spring:
     # 默认连 3306；本机 MySQL 端口不是 3306 时，设置环境变量 DB_PORT（或整个 DB_URL）覆盖即可，队友无需改代码
     url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3306}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    # 本机 xampp MySQL(5.5) 的 root 无密码；有密码的机器用环境变量 DB_PASSWORD 覆盖
+    password: ${DB_PASSWORD:}
     hikari:
       initialization-fail-timeout: -1
 
@@ -82,7 +83,9 @@ security:
   rate-limit:
     enabled: true
     global-per-minute: 60      # 单IP每分钟请求上限
+    file-per-minute: 1200      # 文件接口单独配额（分片上传/并发下载天然高频，但不等于无限）
     block-threshold: 300       # 单窗口内超过该值加入黑名单
+    file-block-threshold: 6000 # 文件接口的封禁阈值，约为配额的 5 倍，正常上传打不到
     block-minutes: 10          # 黑名单封禁时长（分钟）
     ua-check-enabled: false    # 无UA拦截（默认关，避免误伤）
 logging:
@@ -95,3 +98,7 @@ file:
   upload:
     # 文件实际存到磁盘的目录（相对项目启动目录）
     root: ./data/upload
+    max-chunks: 10000              # 单个文件最多允许的分片数（2MB/片 ≈ 20GB 理论上限）
+    max-merged-mb: 2048            # 合并后单文件体积上限（MB），防止绕过单请求 20MB 限制写满磁盘
+    chunk-ttl-hours: 24            # 未完成上传的分片保留时长，超时由定时任务清理
+    chunk-clean-interval-ms: 3600000 # 分片清理任务执行间隔（1 小时）

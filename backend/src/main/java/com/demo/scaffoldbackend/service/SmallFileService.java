@@ -3,6 +3,7 @@ package com.demo.scaffoldbackend.service;
 import com.demo.scaffoldbackend.vo.SmallFileVO;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.List;
 
 /**
@@ -30,6 +31,12 @@ public interface SmallFileService {
      * 按 key 读回文件内容
      */
     byte[] read(String key);
+
+    /**
+     * 把文件内容流式写进输出流，返回写入字节数。
+     * 打包下载走这里，避免把每个文件都先读成 byte[]
+     */
+    long copyTo(String key, OutputStream out) throws IOException;
 
     /**
      * 批量读：一次校验多个 key 是否存在

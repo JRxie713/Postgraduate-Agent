@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -167,6 +168,31 @@ public class SmallFileServiceImpl implements SmallFileService {
             return buffer.array();
         } catch (IOException e) {
             throw new RuntimeException("从大块 " + entry.block + " 读取失败", e);
+        }
+    }
+
+    @Override
+    public long copyTo(String key, OutputStream out) throws IOException {
+        BlockEntry entry = lookup(key);
+        Path blockPath = smallDir().resolve(entry.block);
+
+        try (FileChannel channel = FileChannel.open(blockPath, StandardOpenOption.READ)) {
+            // 只按 8KB 缓冲逐段搬运这一个文件占用的区间，内存占用与文件大小无关
+            ByteBuffer buffer = ByteBuffer.allocate(8192);
+            long position = entry.offset;
+            long remaining = entry.length;
+            while (remaining > 0) {
+                buffer.clear();
+                buffer.limit((int) Math.min(buffer.capacity(), remaining));
+                int n = channel.read(buffer, position);
+                if (n < 0) {
+                    break;
+                }
+                out.write(buffer.array(), 0, n);
+                position += n;
+                remaining -= n;
+            }
+            return entry.length - remaining;
         }
     }
 

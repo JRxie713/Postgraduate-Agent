@@ -37,6 +37,11 @@ public class SmallFileController {
 
     private static final Logger log = LoggerFactory.getLogger(SmallFileController.class);
 
+    /** 单个小文件上限 8MB；批量上传时这些字节要先读进内存，必须有边界 */
+    private static final long MAX_SINGLE_BYTES = 8L * 1024 * 1024;
+    /** 单次批量上传总量上限 32MB，避免 100MB 请求上限下几个并发就把堆打满 */
+    private static final long MAX_BATCH_BYTES = 32L * 1024 * 1024;
+
     private final SmallFileService smallFileService;
 
     public SmallFileController(SmallFileService smallFileService) {
@@ -52,6 +57,17 @@ public class SmallFileController {
     public Result<List<SmallFileVO>> batchUpload(@RequestParam("files") MultipartFile[] files) throws IOException {
         if (files == null || files.length == 0) {
             return Result.error(400, "没有选择文件");
+        }
+
+        long totalBytes = 0;
+        for (MultipartFile file : files) {
+            if (file.getSize() > MAX_SINGLE_BYTES) {
+                return Result.error(400, "单个小文件不能超过 8 MB：" + file.getOriginalFilename());
+            }
+            totalBytes += file.getSize();
+        }
+        if (totalBytes > MAX_BATCH_BYTES) {
+            return Result.error(400, "单次批量上传的总大小不能超过 32 MB");
         }
 
         String[] names = new String[files.length];
@@ -110,11 +126,11 @@ public class SmallFileController {
             int seq = 1;
             for (String key : keys) {
                 SmallFileVO meta = smallFileService.get(key);
-                byte[] content = smallFileService.read(key);
 
                 // zip 里不允许重名，加个序号前缀
                 zip.putNextEntry(new ZipEntry(seq + "_" + meta.getFileName()));
-                zip.write(content);
+                // 直接从大块里按偏移量搬运字节流，不再先读成 byte[]
+                smallFileService.copyTo(key, zip);
                 zip.closeEntry();
                 seq++;
             }

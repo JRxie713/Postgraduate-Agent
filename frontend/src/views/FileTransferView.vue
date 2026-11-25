@@ -51,7 +51,7 @@ const big = reactive({
   doneChunks: 0,
   reusedChunks: 0,
   downloadUrl: '',
-  demoCorrupt: true,
+  demoCorrupt: false,
   chunks: []
 })
 
@@ -65,6 +65,8 @@ const chunkStatusText = (c) => {
 }
 
 function onBigFileChange(event) {
+  // 上传过程中不允许换文件：分片队列、fileId 都基于已选文件，换掉会串数据
+  if (big.busy) return
   bigFile.value = (event.target.files && event.target.files[0]) || null
   resetBig()
 }
@@ -81,7 +83,17 @@ function resetBig() {
   big.chunks = []
 }
 
+// 3 个分片并发上传时，进度回调一帧内会触发多次。
+// 用 rAF 把同帧的多次回调合并成一次重算，避免反复全量遍历分片表。
+let percentFrame = 0
+
 function updateBigPercent() {
+  if (percentFrame) return
+  percentFrame = requestAnimationFrame(recalcBigPercent)
+}
+
+function recalcBigPercent() {
+  percentFrame = 0
   let total = 0
   let loaded = 0
   for (const c of big.chunks) {
@@ -521,7 +533,7 @@ const phaseText = computed(
       </div>
 
       <div class="row">
-        <input type="file" @change="onBigFileChange" />
+        <input type="file" :disabled="big.busy" @change="onBigFileChange" />
         <button type="button" :disabled="big.busy || !bigFile" @click="startBigUpload">
           {{ big.busy ? '处理中…' : '开始分片上传' }}
         </button>
