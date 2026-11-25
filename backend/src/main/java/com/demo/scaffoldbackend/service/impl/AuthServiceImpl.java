@@ -217,7 +217,8 @@ public class AuthServiceImpl implements AuthService {
         if (!"refresh".equals(claims.get("type", String.class))) {
             throw new BusinessException(401, "令牌类型错误");
         }
-        if (!Boolean.TRUE.equals(redis.hasKey("auth:refresh:" + refreshToken))) {
+        String refreshKey = "auth:refresh:" + JwtUtil.digest(refreshToken);
+        if (!Boolean.TRUE.equals(redis.hasKey(refreshKey))) {
             throw new BusinessException(401, "刷新令牌已失效，请重新登录");
         }
         Integer userId = Integer.valueOf(claims.getSubject());
@@ -227,7 +228,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // 刷新令牌轮换：旧令牌作废
-        redis.delete("auth:refresh:" + refreshToken);
+        redis.delete(refreshKey);
         String access = jwtUtil.issueAccess(userId, user.getUserRole());
         String newRefresh = jwtUtil.issueRefresh(userId);
         saveTokens(userId, access, newRefresh);
@@ -547,11 +548,13 @@ public class AuthServiceImpl implements AuthService {
         return normalize(value).toLowerCase();
     }
 
-    /** 保存会话：同一用户仅保留最新访问令牌与刷新令牌 */
+    /** 保存会话：同一用户仅保留最新访问令牌与刷新令牌；Redis 中一律只存 SHA-256 摘要 */
     private void saveTokens(Integer userId, String access, String refresh) {
-        redis.opsForValue().set("auth:session:" + userId, access, Duration.ofSeconds(jwtUtil.getAccessExpire()));
-        redis.opsForValue().set("auth:refresh:" + refresh, String.valueOf(userId), Duration.ofSeconds(jwtUtil.getRefreshExpire()));
-        redis.opsForValue().set("auth:refresh:user:" + userId, refresh, Duration.ofSeconds(jwtUtil.getRefreshExpire()));
+        String accessDigest = JwtUtil.digest(access);
+        String refreshDigest = JwtUtil.digest(refresh);
+        redis.opsForValue().set("auth:session:" + userId, accessDigest, Duration.ofSeconds(jwtUtil.getAccessExpire()));
+        redis.opsForValue().set("auth:refresh:" + refreshDigest, String.valueOf(userId), Duration.ofSeconds(jwtUtil.getRefreshExpire()));
+        redis.opsForValue().set("auth:refresh:user:" + userId, refreshDigest, Duration.ofSeconds(jwtUtil.getRefreshExpire()));
     }
 
     /** 注销会话：访问令牌立即失效，同时作废该用户的刷新令牌 */

@@ -7,7 +7,7 @@ spring:
     # 默认连 3306；本机 MySQL 端口不是 3306 时，设置环境变量 DB_PORT（或整个 DB_URL）覆盖即可，队友无需改代码
     url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3306}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    password: ${DB_PASSWORD:}
     hikari:
       initialization-fail-timeout: -1
 
@@ -75,3 +75,9 @@ logging:
   level:
     com.zaxxer.hikari: DEBUG
     com.mysql.cj: DEBUG
+
+# ===== 文件上传配置 =====
+file:
+  upload:
+    # 文件实际存到磁盘的目录（相对项目启动目录）
+    root: ./data/upload
