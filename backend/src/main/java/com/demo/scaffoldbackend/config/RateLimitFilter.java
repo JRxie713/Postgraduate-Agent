@@ -78,7 +78,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private boolean shouldSkip(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/actuator");
+        String uri = request.getRequestURI();
+        // 文件传输是长连接/多请求场景：一个大文件会产生上百个分片请求，
+        // 走普通接口的「每分钟 60 次」限流会误伤，单独豁免
+        return uri.startsWith("/actuator") || uri.startsWith("/api/file");
     }
 
     private boolean isBlank(String s) {

@@ -12,6 +12,7 @@ import {
   updateTaskStatus
 } from '../api/study'
 import { REFRESH_KEY, TOKEN_KEY } from '../api/http'
+import FileTransferView from './FileTransferView.vue'
 
 const emit = defineEmits(['logout'])
 
@@ -346,6 +347,10 @@ onMounted(async () => {
             <span class="nav-title">政策资讯</span>
             <span class="nav-desc">招生 / 考试 / 院校</span>
           </button>
+          <button :class="['nav-item', { active: tab === 'file' }]" type="button" @click="tab = 'file'">
+            <span class="nav-title">文件传输</span>
+            <span class="nav-desc">分片 / 批量 / 续传</span>
+          </button>
           <button
             v-if="isAdmin"
             :class="['nav-item', { active: tab === 'user' }]"
@@ -504,6 +509,15 @@ onMounted(async () => {
               <span v-for="tag in item.subTags.split('|')" :key="tag"># {{ tag }}</span>
             </p>
           </article>
+        </section>
+
+        <!-- 文件传输演示 -->
+        <section v-else-if="tab === 'file'">
+          <div class="panel-head">
+            <h2>文件传输</h2>
+            <span class="hint">大文件分片上传、小文件批量上传、断点续传、进度条与并发下载</span>
+          </div>
+          <FileTransferView />
         </section>
 
         <!-- 用户管理（仅管理员） -->

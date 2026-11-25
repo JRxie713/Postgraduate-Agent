@@ -5,26 +5,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * 文件模块：上传 / 下载
  *
- * 当前是「最简单版本」：整个文件一次性上传，直接存到本地磁盘。
- * 后续加功能时再往上叠：分片上传、秒传、断点续传、对象存储。
+ * 上传：整个文件一次性上传，直接存到本地磁盘（小文件走这里）。
+ * 下载：支持 HTTP Range，可以实现断点续传和多线程分段并发下载。
  */
 @RestController
 @RequestMapping("/api/file")
@@ -76,9 +80,17 @@ public class FileController {
      * 下载文件
      *
      * 用法：GET /api/file/download/{上传时返回的文件名}
+     *
+     * 支持 HTTP Range（断点续传 / 多线程分段并发下载）：
+     *   - 不带 Range：一次性返回整个文件，响应头带 Accept-Ranges: bytes
+     *   - 带 Range: bytes=start-end：返回 206 Partial Content + Content-Range，
+     *     前端暂停后从已下载字节处继续请求，就是断点续传；
+     *     同时开 4 条连接各取一段，就是并发分段下载。
      */
     @GetMapping("/download/{storedName}")
-    public ResponseEntity<Resource> download(@PathVariable String storedName) throws IOException {
+    public ResponseEntity<?> download(@PathVariable String storedName,
+                                      @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader)
+            throws IOException {
         // 防止有人构造 ../../xxx 这样的路径去读服务器上的其他文件
         if (storedName.contains("/") || storedName.contains("\\") || storedName.contains("..")) {
             return ResponseEntity.badRequest().build();
@@ -90,18 +102,141 @@ public class FileController {
             return ResponseEntity.notFound().build();
         }
 
-        // 下载时把名字还原成用户当初上传的那个名字
+        long fileSize = Files.size(target);
+        String downloadName = originalName(storedName);
+
+        // 1. 普通下载：整文件返回，流式写出，不会把整个文件读进内存
+        if (rangeHeader == null || rangeHeader.isBlank()) {
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, attachment(downloadName))
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .contentLength(fileSize)
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(new FileSystemResource(target));
+        }
+
+        // 2. 解析 Range: bytes=start-end / bytes=start- / bytes=-suffix
+        long start;
+        long end;
+        try {
+            start = -1;
+            end = -1;
+            String spec = rangeHeader.trim();
+            if (!spec.startsWith("bytes=")) {
+                throw new IllegalArgumentException("unsupported range");
+            }
+            String[] parts = spec.substring("bytes=".length()).split("-", 2);
+            if (parts[0].isBlank()) {
+                // bytes=-500：取最后 500 字节
+                long suffix = Long.parseLong(parts[1].trim());
+                if (suffix <= 0) {
+                    throw new IllegalArgumentException("bad suffix");
+                }
+                start = Math.max(0, fileSize - suffix);
+                end = fileSize - 1;
+            } else {
+                start = Long.parseLong(parts[0].trim());
+                end = (parts.length < 2 || parts[1].isBlank()) ? fileSize - 1 : Long.parseLong(parts[1].trim());
+            }
+            if (start < 0 || start >= fileSize || end < start) {
+                throw new IllegalArgumentException("range out of bounds");
+            }
+            end = Math.min(end, fileSize - 1);
+        } catch (RuntimeException e) {
+            // 416：请求的区间非法，把文件总长度告诉前端，方便它修正重试
+            return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
+                    .build();
+        }
+
+        long length = end - start + 1;
+        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                .header(HttpHeaders.CONTENT_DISPOSITION, attachment(downloadName))
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize)
+                .contentLength(length)
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(new InputStreamResource(new BoundedFileInputStream(target, start, length)));
+    }
+
+    /**
+     * 文件元信息
+     *
+     * 用法：GET /api/file/meta/{文件地址里的文件名}
+     * 前端在做「分段并发下载」之前，需要先知道文件有多大，才能算出每一段的大小。
+     */
+    @GetMapping("/meta/{storedName}")
+    public Result<Map<String, Object>> meta(@PathVariable String storedName) throws IOException {
+        if (storedName.contains("/") || storedName.contains("\\") || storedName.contains("..")) {
+            return Result.error(400, "文件名不合法");
+        }
+        Path target = Paths.get(uploadRoot).toAbsolutePath().normalize().resolve(storedName);
+        if (!Files.exists(target)) {
+            return Result.error(404, "文件不存在");
+        }
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("storedName", storedName);
+        meta.put("fileName", originalName(storedName));
+        meta.put("size", Files.size(target));
+        return Result.success(meta);
+    }
+
+    /** 从「8位随机串_原始文件名」里还原出原始文件名 */
+    private String originalName(String storedName) {
         int split = storedName.indexOf('_');
-        String downloadName = (split >= 0 && split < storedName.length() - 1)
+        return (split >= 0 && split < storedName.length() - 1)
                 ? storedName.substring(split + 1)
                 : storedName;
+    }
 
-        Resource resource = new FileSystemResource(target);
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" +
-                                URLEncoder.encode(downloadName, StandardCharsets.UTF_8) + "\"")
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(resource);
+    private String attachment(String fileName) {
+        return "attachment; filename=\"" + URLEncoder.encode(fileName, StandardCharsets.UTF_8) + "\"";
+    }
+
+    /**
+     * 只读取文件 [start, start+length) 这一段字节的输入流。
+     * 用来配合 206 响应，避免把整个文件读进内存。
+     */
+    private static final class BoundedFileInputStream extends InputStream {
+
+        private final InputStream delegate;
+        private long remaining;
+
+        BoundedFileInputStream(Path path, long start, long length) throws IOException {
+            InputStream in = Files.newInputStream(path);
+            in.skipNBytes(start);
+            this.delegate = in;
+            this.remaining = length;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (remaining <= 0) {
+                return -1;
+            }
+            int b = delegate.read();
+            if (b >= 0) {
+                remaining--;
+            }
+            return b;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int len) throws IOException {
+            if (remaining <= 0) {
+                return -1;
+            }
+            int n = delegate.read(buffer, offset, (int) Math.min(len, remaining));
+            if (n > 0) {
+                remaining -= n;
+            }
+            return n;
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
     }
 }
