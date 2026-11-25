@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { createUser, currentUser, deleteUser, logout, updateUser, userList } from '../api/auth'
 import {
   createPlan,
@@ -12,7 +12,9 @@ import {
   updateTaskStatus
 } from '../api/study'
 import { REFRESH_KEY, TOKEN_KEY } from '../api/http'
-import FileTransferView from './FileTransferView.vue'
+
+// 文件传输页体量最大且只在切到该 tab 时使用，按需加载
+const FileTransferView = defineAsyncComponent(() => import('./FileTransferView.vue'))
 
 const emit = defineEmits(['logout'])
 
