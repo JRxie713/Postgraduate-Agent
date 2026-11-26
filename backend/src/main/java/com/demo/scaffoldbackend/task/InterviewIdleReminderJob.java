@@ -20,8 +20,13 @@ import java.util.stream.Collectors;
  * 面试进行中提醒（默认每 5 分钟）
  *
  * <p>扫描"进行中但超过 N 分钟没有新作答"的面试会话，提醒用户回到训练；
- * 同时输出未读报告数量。触发周期与空闲阈值均可配置，便于演示：
- * interview.reminder.idle-cron / interview.reminder.idle-minutes。</p>
+ * 同时输出未读报告数量。</p>
+ *
+ * <p><b>N 从哪里来：</b>由 {@code interview.reminder.idle-minutes} 决定，
+ * 本类第 38 行的 {@code :5} 只是"没配置时的默认值"。
+ * 只要 backend/.env 里写了这行，就以 .env 为准（配置优先于代码默认值），
+ * 这样改分钟数不用重新编译；同一数字也被 InterviewQuartzConfig 用来生成 cron，
+ * 保证"多久跑一次"和"多久算超时"始终一致。</p>
  */
 @Slf4j
 @DisallowConcurrentExecution
@@ -33,7 +38,7 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
     @Autowired
     private InterviewReportMapper reportMapper;
 
-    /** 空闲判定阈值（分钟），默认 5 */
+    /** 空闲判定阈值（分钟），默认 5；backend/.env 配了则以 .env 为准 */
     @Value("${interview.reminder.idle-minutes:5}")
     private int idleMinutes;
 
