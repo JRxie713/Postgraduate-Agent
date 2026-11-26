@@ -9,6 +9,10 @@ export const listInterviewSessions = (userId) =>
 
 export const getInterviewSession = (id) => request(`/interview/sessions/${id}`)
 
+// 超时未作答提醒（与后端 Quartz 任务同一阈值）
+export const interviewReminders = (userId) =>
+  request(`/interview/reminders?userId=${encodeURIComponent(userId)}`)
+
 export const getCurrentQuestion = (id) => request(`/interview/sessions/${id}/question`)
 
 export const submitInterviewAnswer = (id, payload) =>

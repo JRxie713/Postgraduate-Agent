@@ -11,6 +11,7 @@ import com.demo.scaffoldbackend.service.InterviewService;
 import com.demo.scaffoldbackend.vo.EnglishReviewVO;
 import com.demo.scaffoldbackend.vo.FinalInterviewReportVO;
 import com.demo.scaffoldbackend.vo.InterviewRecordVO;
+import com.demo.scaffoldbackend.vo.InterviewReminderVO;
 import com.demo.scaffoldbackend.vo.InterviewSessionVO;
 import com.demo.scaffoldbackend.vo.InterviewTurnVO;
 import jakarta.validation.Valid;
@@ -44,6 +45,12 @@ public class InterviewController {
     @GetMapping("/sessions")
     public Result<List<InterviewSessionVO>> listSessions(@RequestParam Integer userId) {
         return Result.success(interviewService.listSessions(userId));
+    }
+
+    /** 超时未作答提醒（前端轮询，与 Quartz 任务使用同一阈值） */
+    @GetMapping("/reminders")
+    public Result<List<InterviewReminderVO>> reminders(@RequestParam Integer userId) {
+        return Result.success(interviewService.listIdleReminders(userId));
     }
 
     /** 查询会话详情 */

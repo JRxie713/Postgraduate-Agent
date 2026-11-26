@@ -5,6 +5,7 @@ import com.demo.scaffoldbackend.dto.CreateInterviewSessionDTO;
 import com.demo.scaffoldbackend.dto.FollowUpDTO;
 import com.demo.scaffoldbackend.vo.EnglishReviewVO;
 import com.demo.scaffoldbackend.vo.FinalInterviewReportVO;
+import com.demo.scaffoldbackend.vo.InterviewReminderVO;
 import com.demo.scaffoldbackend.vo.InterviewSessionVO;
 import com.demo.scaffoldbackend.vo.InterviewTurnVO;
 
@@ -26,6 +27,9 @@ public interface InterviewService {
 
     /** 查询某个用户的历史会话 */
     List<InterviewSessionVO> listSessions(Integer userId);
+
+    /** 查询某用户超时未作答的面试会话（前端轮询展示提醒） */
+    List<InterviewReminderVO> listIdleReminders(Integer userId);
 
     /** 获取当前待作答的题目（没有则自动出下一题） */
     InterviewTurnVO getCurrentQuestion(Integer sessionId);

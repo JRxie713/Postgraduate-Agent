@@ -17,6 +17,7 @@ import com.demo.scaffoldbackend.service.AiChatClient;
 import com.demo.scaffoldbackend.service.InterviewService;
 import com.demo.scaffoldbackend.vo.EnglishReviewVO;
 import com.demo.scaffoldbackend.vo.FinalInterviewReportVO;
+import com.demo.scaffoldbackend.vo.InterviewReminderVO;
 import com.demo.scaffoldbackend.vo.InterviewSessionVO;
 import com.demo.scaffoldbackend.vo.InterviewTurnVO;
 import tools.jackson.databind.JsonNode;
@@ -70,6 +71,10 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewQuestionBankMapper questionMapper;
     private final AiChatClient aiChatClient;
 
+    /** 超时提醒阈值（分钟），与 Quartz 任务共用同一个配置项 */
+    @org.springframework.beans.factory.annotation.Value("${interview.reminder.idle-minutes:5}")
+    private int idleReminderMinutes;
+
     // ==================== 会话 ====================
 
     @Override
@@ -110,6 +115,34 @@ public class InterviewServiceImpl implements InterviewService {
                         .eq(InterviewSession::getUserId, userId)
                         .orderByDesc(InterviewSession::getCreateTime))
                 .stream().map(this::toSessionVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<InterviewReminderVO> listIdleReminders(Integer userId) {
+        if (userId == null) {
+            throw new BusinessException(400, "userId 不能为空");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime threshold = now.minusMinutes(idleReminderMinutes);
+
+        return sessionMapper.selectList(Wrappers.<InterviewSession>lambdaQuery()
+                        .eq(InterviewSession::getUserId, userId)
+                        .eq(InterviewSession::getStatus, STATUS_ONGOING)
+                        .lt(InterviewSession::getUpdateTime, threshold)
+                        .orderByAsc(InterviewSession::getUpdateTime))
+                .stream().map(s -> {
+                    InterviewReminderVO vo = new InterviewReminderVO();
+                    vo.setSessionId(s.getId());
+                    vo.setMajor(s.getMajor());
+                    vo.setTrainingType(s.getTrainingType());
+                    vo.setCurrentRound(s.getCurrentRound());
+                    vo.setTotalRounds(s.getTotalRounds());
+                    long idle = s.getUpdateTime() == null ? idleReminderMinutes
+                            : java.time.Duration.between(s.getUpdateTime(), now).toMinutes();
+                    vo.setIdleMinutes(idle);
+                    vo.setMessage("你有 1 场面试已闲置 " + idle + " 分钟未作答，继续完成可以拿到有效报告");
+                    return vo;
+                }).collect(Collectors.toList());
     }
 
     // ==================== 问答 ====================

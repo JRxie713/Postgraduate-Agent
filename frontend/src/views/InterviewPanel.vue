@@ -1,11 +1,12 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   finishInterview,
   generateFollowUp,
   getCurrentQuestion,
   getInterviewReport,
   getInterviewSession,
+  interviewReminders,
   listInterviewSessions,
   reviewEnglishIntro,
   startInterview,
@@ -49,6 +50,32 @@ const historyLoading = ref(false)
 
 const englishText = ref('')
 const englishResult = ref(null)
+
+// 超时未作答提醒（每 30 秒轮询一次，对应后端 Quartz 定时任务）
+const reminders = ref([])
+let reminderTimer = null
+
+async function pollReminders() {
+  if (!props.user || props.user.id == null) return
+  const data = await interviewReminders(props.user.id)
+  if (data.code === 200) {
+    reminders.value = data.data || []
+  }
+}
+
+onMounted(() => {
+  pollReminders()
+  reminderTimer = setInterval(pollReminders, 30000)
+})
+
+onUnmounted(() => {
+  if (reminderTimer) clearInterval(reminderTimer)
+})
+
+async function resumeReminder(item) {
+  await openHistory({ id: item.sessionId, status: 'ongoing' })
+  await pollReminders()
+}
 
 const typeText = (value) => {
   const hit = trainingTypes.find((item) => item.value === value)
@@ -289,6 +316,14 @@ function switchSub(name) {
 
     <p v-if="message" class="message">{{ message }}</p>
 
+    <!-- 超时未作答提醒（后端 Quartz 任务扫描结果） -->
+    <div v-if="reminders.length" class="reminder">
+      <p v-for="item in reminders" :key="item.sessionId" class="reminder-row">
+        <span class="reminder-text">{{ item.message }}</span>
+        <button class="reminder-btn" type="button" @click="resumeReminder(item)">继续作答</button>
+      </p>
+    </div>
+
     <!-- ===== 模拟面试 ===== -->
     <template v-if="subTab === 'train'">
       <!-- 未开始：配置 -->
@@ -526,6 +561,17 @@ function switchSub(name) {
   border: 1px solid #e8edf5; font-size: 13px; color: #46526b;
 }
 .card { padding: 18px; background: #ffffff; border: 1px solid #e8edf5; border-radius: 14px; }
+.reminder {
+  display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px;
+  background: #fffaeb; border: 1px solid #fec84b;
+}
+.reminder-row { margin: 0; display: flex; align-items: center; gap: 12px; }
+.reminder-text { font-size: 13px; color: #b54708; line-height: 1.6; }
+.reminder-btn {
+  margin-left: auto; flex: none; padding: 6px 14px; border: none; border-radius: 8px;
+  background: #dc6803; color: #fff; font-size: 12px; cursor: pointer;
+}
+.reminder-btn:hover { background: #b54708; }
 .setup-grid { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .setup-grid label { display: grid; gap: 6px; font-size: 12px; color: #6b7688; }
 .setup-grid label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #46526b; }
