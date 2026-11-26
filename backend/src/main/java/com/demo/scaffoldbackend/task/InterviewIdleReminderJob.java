@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 
 import java.time.LocalDateTime;
@@ -16,10 +17,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 面试进行中提醒（每 5 分钟）
+ * 面试进行中提醒（默认每 5 分钟）
  *
- * <p>扫描"进行中但超过 5 分钟没有新作答"的面试会话，提醒用户回到训练；
- * 同时输出未读报告数量。用于课堂演示定时任务持续触发。</p>
+ * <p>扫描"进行中但超过 N 分钟没有新作答"的面试会话，提醒用户回到训练；
+ * 同时输出未读报告数量。触发周期与空闲阈值均可配置，便于演示：
+ * interview.reminder.idle-cron / interview.reminder.idle-minutes。</p>
  */
 @Slf4j
 @DisallowConcurrentExecution
@@ -31,9 +33,13 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
     @Autowired
     private InterviewReportMapper reportMapper;
 
+    /** 空闲判定阈值（分钟），默认 5 */
+    @Value("${interview.reminder.idle-minutes:5}")
+    private int idleMinutes;
+
     @Override
     protected void executeInternal(JobExecutionContext context) {
-        LocalDateTime threshold = LocalDateTime.now().minusMinutes(5);
+        LocalDateTime threshold = LocalDateTime.now().minusMinutes(idleMinutes);
 
         List<InterviewSession> idle = sessionMapper.selectList(Wrappers.<InterviewSession>lambdaQuery()
                 .eq(InterviewSession::getStatus, "ongoing")
@@ -43,7 +49,7 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
                 .eq(InterviewReport::getReportRead, 0));
 
         if (idle.isEmpty()) {
-            log.info("[面试提醒·5分钟] 无超时未作答会话，未读报告 {} 份", unreadReports);
+            log.info("[面试提醒·{}分钟] 无超时未作答会话，未读报告 {} 份", idleMinutes, unreadReports);
             return;
         }
 
@@ -51,7 +57,7 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
                 .map(s -> String.format("sessionId=%d(userId=%d, 已答%d/%d轮)",
                         s.getId(), s.getUserId(), s.getCurrentRound(), s.getTotalRounds()))
                 .collect(Collectors.joining("; "));
-        log.info("[面试提醒·5分钟] {} 场面试超过 5 分钟未作答：{}；未读报告 {} 份",
-                idle.size(), detail, unreadReports);
+        log.info("[面试提醒·{}分钟] {} 场面试超过 {} 分钟未作答：{}；未读报告 {} 份",
+                idleMinutes, idle.size(), idleMinutes, detail, unreadReports);
     }
 }
