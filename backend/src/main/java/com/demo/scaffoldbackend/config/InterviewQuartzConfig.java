@@ -11,7 +11,6 @@ import org.quartz.Scheduler;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 import org.quartz.TriggerKey;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Bean;
@@ -38,9 +37,6 @@ public class InterviewQuartzConfig {
     /** 超时提醒：N 分钟（同时作为触发周期与空闲阈值），默认 5 */
     @Value("${interview.reminder.idle-minutes:5}")
     private int idleMinutes;
-
-    @Autowired(required = false)
-    private Scheduler scheduler;
 
     /**
      * 由分钟数生成 cron：每 N 分钟的第 0 秒触发
@@ -92,19 +88,26 @@ public class InterviewQuartzConfig {
 
     /**
      * 启动完成后打印两个任务的下次触发时间，方便确认定时任务已生效
+     *
+     * <p>注意：这里不能在字段上直接注入 Scheduler，否则会形成
+     * config → scheduler → SchedulerFactoryBean → config 的循环依赖，
+     * 因此在启动完成事件里再懒取。</p>
      */
     @EventListener(ApplicationReadyEvent.class)
-    public void logScheduledTriggers() {
-        if (scheduler == null) {
-            log.warn("[Quartz] 调度器未就绪，无法输出定时任务信息");
+    public void logScheduledTriggers(ApplicationReadyEvent event) {
+        Scheduler scheduler;
+        try {
+            scheduler = event.getApplicationContext().getBean(Scheduler.class);
+        } catch (Exception e) {
+            log.warn("[Quartz] 调度器未就绪，无法输出定时任务信息: {}", e.getMessage());
             return;
         }
         log.info("[Quartz] 超时提醒配置：每 {} 分钟检查一次，超过 {} 分钟未作答即提醒", idleMinutes, idleMinutes);
-        logNextFire("interviewReminderTrigger", "每日未读报告提醒");
-        logNextFire("interviewIdleReminderTrigger", "超时未作答提醒");
+        logNextFire(scheduler, "interviewReminderTrigger", "每日未读报告提醒");
+        logNextFire(scheduler, "interviewIdleReminderTrigger", "超时未作答提醒");
     }
 
-    private void logNextFire(String triggerName, String desc) {
+    private void logNextFire(Scheduler scheduler, String triggerName, String desc) {
         try {
             Trigger trigger = scheduler.getTrigger(TriggerKey.triggerKey(triggerName, "interview"));
             if (trigger == null) {
