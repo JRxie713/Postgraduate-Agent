@@ -52,7 +52,7 @@ const historyLoading = ref(false)
 const englishText = ref('')
 const englishResult = ref(null)
 
-// 超时未作答提醒（每 30 秒轮询一次，对应后端 Quartz 定时任务）
+// 超时未作答提醒（每 15 秒轮询一次，对应后端 Quartz 定时任务）
 const reminders = ref([])
 let reminderTimer = null
 
@@ -62,11 +62,30 @@ async function pollReminders() {
   if (data.code === 200) {
     reminders.value = data.data || []
   }
+  await checkCurrentSession()
+}
+
+// 正在作答的会话若被后端自动放弃，立刻退回方向/难度选择页
+async function checkCurrentSession() {
+  if (!session.value || session.value.id == null) return
+  if (session.value.status !== 'ongoing') return
+  const detail = await getInterviewSession(session.value.id)
+  if (detail.code !== 200 || !detail.data) return
+  if (detail.data.status !== 'abandoned') {
+    session.value = detail.data
+    return
+  }
+  const abandonedId = session.value.id
+  reminders.value = reminders.value.filter((item) => item.sessionId !== abandonedId)
+  resetInterview()
+  subTab.value = 'train'
+  message.value = '该场面试超过设定时间未作答，已自动放弃，请重新选择方向与难度'
+  await loadHistory()
 }
 
 onMounted(() => {
   pollReminders()
-  reminderTimer = setInterval(pollReminders, 30000)
+  reminderTimer = setInterval(pollReminders, 15000)
 })
 
 onUnmounted(() => {
