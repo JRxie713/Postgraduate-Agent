@@ -45,8 +45,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (subject != null && "access".equals(claims.get("type", String.class))
                         && SecurityContextHolder.getContext().getAuthentication() == null) {
                     String sessionToken = redis.opsForValue().get("auth:session:" + subject);
-                    // Redis 存的是 SHA-256 摘要，令牌本身不落缓存
-                    if (JwtUtil.digest(token).equals(sessionToken)) {
+                    if (token.equals(sessionToken)) {
                         List<GrantedAuthority> authorities = new ArrayList<>();
                         if (role != null && !role.isBlank()) {
                             authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
