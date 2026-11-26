@@ -27,6 +27,10 @@ export const generateFollowUp = (id, roundIndex) =>
 export const finishInterview = (id) =>
   request(`/interview/sessions/${id}/finish`, { method: 'POST' })
 
+// 放弃进行中的面试（不再提醒，不生成报告）
+export const abandonInterview = (id) =>
+  request(`/interview/sessions/${id}/abandon`, { method: 'POST' })
+
 export const getInterviewReport = (id) => request(`/interview/sessions/${id}/report`)
 
 export const reviewEnglishIntro = (introduction) =>

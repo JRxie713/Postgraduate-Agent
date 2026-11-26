@@ -53,6 +53,13 @@ public class InterviewController {
         return Result.success(interviewService.listIdleReminders(userId));
     }
 
+    /** 放弃一场进行中的面试 */
+    @PostMapping("/sessions/{id}/abandon")
+    public Result<Void> abandon(@PathVariable Integer id) {
+        interviewService.abandonSession(id);
+        return Result.success(null);
+    }
+
     /** 查询会话详情 */
     @GetMapping("/sessions/{id}")
     public Result<InterviewSessionVO> getSession(@PathVariable Integer id) {

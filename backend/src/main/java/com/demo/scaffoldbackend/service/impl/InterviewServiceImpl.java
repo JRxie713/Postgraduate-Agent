@@ -49,6 +49,7 @@ public class InterviewServiceImpl implements InterviewService {
 
     private static final String STATUS_ONGOING = "ongoing";
     private static final String STATUS_FINISHED = "finished";
+    private static final String STATUS_ABANDONED = "abandoned";
 
     /** JSON 工具（Jackson 3，线程安全） */
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -145,12 +146,26 @@ public class InterviewServiceImpl implements InterviewService {
                 }).collect(Collectors.toList());
     }
 
+    @Override
+    public void abandonSession(Integer sessionId) {
+        InterviewSession session = requireSession(sessionId);
+        if (!STATUS_ONGOING.equals(session.getStatus())) {
+            throw new BusinessException(409, "该场面试已结束或已放弃");
+        }
+        session.setStatus(STATUS_ABANDONED);
+        session.setUpdateTime(LocalDateTime.now());
+        sessionMapper.updateById(session);
+    }
+
     // ==================== 问答 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public InterviewTurnVO getCurrentQuestion(Integer sessionId) {
         InterviewSession session = requireSession(sessionId);
+        if (STATUS_ABANDONED.equals(session.getStatus())) {
+            throw new BusinessException(409, "该场面试已放弃，请重新开始一场");
+        }
         InterviewTurn pending = findPendingTurn(sessionId);
         if (pending == null) {
             if (STATUS_FINISHED.equals(session.getStatus())) {
@@ -168,6 +183,9 @@ public class InterviewServiceImpl implements InterviewService {
     @Transactional(rollbackFor = Exception.class)
     public InterviewTurnVO submitAnswer(Integer sessionId, AnswerInterviewDTO dto) {
         InterviewSession session = requireSession(sessionId);
+        if (STATUS_ABANDONED.equals(session.getStatus())) {
+            throw new BusinessException(409, "该场面试已放弃，请重新开始一场");
+        }
         if (STATUS_FINISHED.equals(session.getStatus())) {
             throw new BusinessException(409, "该场面试已结束，无法继续作答");
         }

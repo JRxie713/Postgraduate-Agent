@@ -31,6 +31,9 @@ public interface InterviewService {
     /** 查询某用户超时未作答的面试会话（前端轮询展示提醒） */
     List<InterviewReminderVO> listIdleReminders(Integer userId);
 
+    /** 放弃一场进行中的面试（不再提醒、不生成报告） */
+    void abandonSession(Integer sessionId);
+
     /** 获取当前待作答的题目（没有则自动出下一题） */
     InterviewTurnVO getCurrentQuestion(Integer sessionId);
 

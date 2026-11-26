@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
+  abandonInterview,
   finishInterview,
   generateFollowUp,
   getCurrentQuestion,
@@ -74,6 +75,25 @@ onUnmounted(() => {
 
 async function resumeReminder(item) {
   await openHistory({ id: item.sessionId, status: 'ongoing' })
+  await pollReminders()
+}
+
+// 放弃进行中的面试
+async function giveUp(sessionId) {
+  if (!window.confirm('确定放弃这场面试吗？放弃后不会再提醒，也不会生成报告')) return
+  const data = await abandonInterview(sessionId)
+  if (data.code !== 200) {
+    message.value = data.message || '放弃失败'
+    return
+  }
+  message.value = '已放弃该场面试'
+  reminders.value = reminders.value.filter((item) => item.sessionId !== sessionId)
+  if (session.value && session.value.id === sessionId) {
+    session.value = null
+    turn.value = null
+    subTab.value = 'train'
+  }
+  await loadHistory()
   await pollReminders()
 }
 
@@ -321,6 +341,7 @@ function switchSub(name) {
       <p v-for="item in reminders" :key="item.sessionId" class="reminder-row">
         <span class="reminder-text">{{ item.message }}</span>
         <button class="reminder-btn" type="button" @click="resumeReminder(item)">继续作答</button>
+        <button class="reminder-btn ghost" type="button" @click="giveUp(item.sessionId)">放弃</button>
       </p>
     </div>
 
@@ -465,12 +486,22 @@ function switchSub(name) {
       <p v-if="historyLoading" class="empty">加载中…</p>
       <p v-else-if="!history.length" class="empty">还没有面试记录，先去「模拟面试」开一场吧</p>
       <div v-else class="history">
-        <button v-for="item in history" :key="item.id" class="history-row" type="button" @click="openHistory(item)">
-          <span class="h-main">{{ item.major }} · {{ typeText(item.trainingType) }}</span>
-          <span class="h-meta">{{ difficultyText(item.difficulty) }} · {{ statusText(item.status) }}</span>
-          <span class="h-score">{{ item.score == null ? '—' : scoreOf(item.score) }}</span>
-          <span class="h-time">{{ String(item.createTime || '').replace('T', ' ').slice(0, 16) }}</span>
-        </button>
+        <div v-for="item in history" :key="item.id" class="history-row">
+          <button class="h-open" type="button" @click="openHistory(item)">
+            <span class="h-main">{{ item.major }} · {{ typeText(item.trainingType) }}</span>
+            <span class="h-meta">{{ difficultyText(item.difficulty) }} · {{ statusText(item.status) }}</span>
+            <span class="h-score">{{ item.score == null ? '—' : scoreOf(item.score) }}</span>
+            <span class="h-time">{{ String(item.createTime || '').replace('T', ' ').slice(0, 16) }}</span>
+          </button>
+          <button
+            v-if="item.status === 'ongoing'"
+            class="h-abandon"
+            type="button"
+            @click="giveUp(item.id)"
+          >
+            放弃
+          </button>
+        </div>
       </div>
     </template>
 
@@ -572,6 +603,7 @@ function switchSub(name) {
   background: #dc6803; color: #fff; font-size: 12px; cursor: pointer;
 }
 .reminder-btn:hover { background: #b54708; }
+.reminder-btn.ghost { background: #fff; color: #b54708; border: 1px solid #fec84b; }
 .setup-grid { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .setup-grid label { display: grid; gap: 6px; font-size: 12px; color: #6b7688; }
 .setup-grid label.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #46526b; }
@@ -638,11 +670,20 @@ function switchSub(name) {
 .muted { color: #97a1b5; }
 .history { display: grid; gap: 10px; }
 .history-row {
-  display: grid; grid-template-columns: 1.6fr 1.4fr 60px 130px; align-items: center; gap: 12px;
-  padding: 12px 16px; background: #fff; border: 1px solid #e8edf5; border-radius: 12px;
-  text-align: left; cursor: pointer; font-size: 13px; color: #16233a;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;
+  padding: 6px 10px 6px 6px; background: #fff; border: 1px solid #e8edf5; border-radius: 12px;
 }
 .history-row:hover { border-color: #2f6fe4; }
+.h-open {
+  display: grid; grid-template-columns: 1.6fr 1.4fr 60px 130px; align-items: center; gap: 12px;
+  padding: 6px 10px; background: none; border: none; text-align: left; cursor: pointer;
+  font-size: 13px; color: #16233a;
+}
+.h-abandon {
+  padding: 6px 12px; border: 1px solid #f2c7c3; border-radius: 8px; background: #fff;
+  color: #b42318; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.h-abandon:hover { background: #fef3f2; }
 .h-main { font-weight: 600; }
 .h-meta { font-size: 12px; color: #7a869a; }
 .h-score { color: #2f6fe4; text-align: right; }
@@ -654,6 +695,6 @@ function switchSub(name) {
 }
 @media (max-width: 860px) {
   .report-cols { grid-template-columns: 1fr; }
-  .history-row { grid-template-columns: 1fr 1fr; }
+  .h-open { grid-template-columns: 1fr 1fr; }
 }
 </style>

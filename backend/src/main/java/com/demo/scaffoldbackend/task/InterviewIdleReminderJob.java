@@ -42,9 +42,16 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
     @Value("${interview.reminder.idle-minutes:5}")
     private int idleMinutes;
 
+    /** 超过多少分钟仍未作答就自动放弃该场面试，默认 30；可用 interview.reminder.abandon-minutes 覆盖 */
+    @Value("${interview.reminder.abandon-minutes:30}")
+    private int abandonMinutes;
+
     @Override
     protected void executeInternal(JobExecutionContext context) {
-        LocalDateTime threshold = LocalDateTime.now().minusMinutes(idleMinutes);
+        LocalDateTime now = LocalDateTime.now();
+        autoAbandonExpired(now);
+
+        LocalDateTime threshold = now.minusMinutes(idleMinutes);
 
         List<InterviewSession> idle = sessionMapper.selectList(Wrappers.<InterviewSession>lambdaQuery()
                 .eq(InterviewSession::getStatus, "ongoing")
@@ -64,5 +71,24 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
                 .collect(Collectors.joining("; "));
         log.info("[面试提醒·{}分钟] {} 场面试超过 {} 分钟未作答：{}；未读报告 {} 份",
                 idleMinutes, idle.size(), idleMinutes, detail, unreadReports);
+    }
+
+    /** 长期未作答的会话自动置为 abandoned，避免旧会话反复提醒 */
+    private void autoAbandonExpired(LocalDateTime now) {
+        LocalDateTime expireBefore = now.minusMinutes(abandonMinutes);
+        List<InterviewSession> expired = sessionMapper.selectList(Wrappers.<InterviewSession>lambdaQuery()
+                .eq(InterviewSession::getStatus, "ongoing")
+                .lt(InterviewSession::getUpdateTime, expireBefore));
+        if (expired.isEmpty()) {
+            return;
+        }
+        for (InterviewSession session : expired) {
+            session.setStatus("abandoned");
+            session.setUpdateTime(now);
+            sessionMapper.updateById(session);
+        }
+        log.info("[面试自动放弃] {} 场面试超过 {} 分钟未作答，已标记为放弃：{}",
+                expired.size(), abandonMinutes,
+                expired.stream().map(InterviewSession::getId).toList());
     }
 }
