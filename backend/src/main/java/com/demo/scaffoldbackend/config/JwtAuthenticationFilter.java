@@ -1,5 +1,6 @@
 package com.demo.scaffoldbackend.config;
 
+import com.demo.scaffoldbackend.service.RbacService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -16,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * JWT 认证过滤器：解析 Authorization 头，校验通过后写入 SecurityContext
@@ -25,10 +27,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final StringRedisTemplate redis;
+    private final RbacService rbacService;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil, StringRedisTemplate redis) {
+    public JwtAuthenticationFilter(JwtUtil jwtUtil, StringRedisTemplate redis, RbacService rbacService) {
         this.jwtUtil = jwtUtil;
         this.redis = redis;
+        this.rbacService = rbacService;
     }
 
     @Override
@@ -49,6 +53,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         List<GrantedAuthority> authorities = new ArrayList<>();
                         if (role != null && !role.isBlank()) {
                             authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                        }
+                        // 禅道式权限点：把用户所属权限组的 module:method 一并放进 authorities
+                        Set<String> permissions = rbacService.permissionsOf(Integer.valueOf(subject), role);
+                        for (String permission : permissions) {
+                            authorities.add(new SimpleGrantedAuthority(permission));
                         }
                         UsernamePasswordAuthenticationToken auth =
                                 new UsernamePasswordAuthenticationToken(subject, null, authorities);

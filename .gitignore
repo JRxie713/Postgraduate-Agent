@@ -9,8 +9,17 @@ target
 *.class
 *.jar
 
+# 本地环境变量（含账号密码/密钥，禁止提交）
+.env
+backend/.env
+
+# 本机聊天附件（chat.storage.type=local）
+data/chat-files
+backend/data/chat-files
+
 # 系统/编辑器文件
 .DS_Store
 Thumbs.db
 .idea
 .vscode
+

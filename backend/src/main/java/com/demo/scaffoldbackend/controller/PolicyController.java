@@ -30,6 +30,7 @@ public class PolicyController {
     }
 
     /** 分页查询政策通知列表（可按类型过滤） */
+    @PreAuthorize("hasAuthority('policy:view')")
     @GetMapping
     public Result<PageResult<PolicyNoticeVO>> list(@RequestParam(defaultValue = "1") Integer page,
                                                    @RequestParam(defaultValue = "10") Integer size,
@@ -48,6 +49,7 @@ public class PolicyController {
     }
 
     /** 根据类型查询政策通知列表 */
+    @PreAuthorize("hasAuthority('policy:view')")
     @GetMapping("/type/{noticeType}")
     public Result<List<PolicyNoticeVO>> listByType(@PathVariable String noticeType) {
         List<PolicyNotice> notices = policyNoticeMapper.selectList(new LambdaQueryWrapper<PolicyNotice>()
@@ -62,6 +64,7 @@ public class PolicyController {
     }
 
     /** 根据ID查询政策通知 */
+    @PreAuthorize("hasAuthority('policy:view')")
     @GetMapping("/{id}")
     public Result<PolicyNoticeVO> getById(@PathVariable Integer id) {
         PolicyNotice notice = policyNoticeMapper.selectById(id);
@@ -71,8 +74,8 @@ public class PolicyController {
         return Result.success(toVO(notice));
     }
 
-    /** 新增政策通知（教师 / 管理员） */
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    /** 新增政策通知（需要 policy:create 权限） */
+    @PreAuthorize("hasAuthority('policy:create')")
     @PostMapping
     public Result<PolicyNoticeVO> create(@RequestBody PolicyNoticeDTO dto) {
         if (dto == null || dto.getTitle() == null || dto.getTitle().isBlank()) {
@@ -90,8 +93,8 @@ public class PolicyController {
         return Result.success(toVO(notice));
     }
 
-    /** 更新政策通知（教师 / 管理员） */
-    @PreAuthorize("hasAnyRole('ADMIN','TEACHER')")
+    /** 更新政策通知（需要 policy:update 权限） */
+    @PreAuthorize("hasAuthority('policy:update')")
     @PutMapping("/{id}")
     public Result<PolicyNoticeVO> update(@PathVariable Integer id, @RequestBody PolicyNoticeDTO dto) {
         PolicyNotice notice = policyNoticeMapper.selectById(id);
@@ -120,8 +123,8 @@ public class PolicyController {
         return Result.success(toVO(notice));
     }
 
-    /** 删除政策通知（仅管理员） */
-    @PreAuthorize("hasRole('ADMIN')")
+    /** 删除政策通知（需要 policy:delete 权限） */
+    @PreAuthorize("hasAuthority('policy:delete')")
     @DeleteMapping("/{id}")
     public Result<Boolean> delete(@PathVariable Integer id) {
         policyNoticeMapper.deleteById(id);

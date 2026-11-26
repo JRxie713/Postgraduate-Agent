@@ -2,12 +2,18 @@ server:
   port: 8080
 
 spring:
+  # 本地敏感配置从 .env 读取（该文件已被 .gitignore 忽略，不提交）
+  # 支持在项目根目录或 backend 目录启动；队友复制 backend/.env.example 为 backend/.env 后填写
+  config:
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:./backend/.env[.properties]
+
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    # 默认连 3306；本机 MySQL 端口不是 3306 时，设置环境变量 DB_PORT（或整个 DB_URL）覆盖即可，队友无需改代码
     url: ${DB_URL:jdbc:mysql://127.0.0.1:${DB_PORT:3306}/kaoyan?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     hikari:
       initialization-fail-timeout: -1
 
@@ -15,22 +21,41 @@ spring:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
       database: 0
       timeout: 3000
 
+  # Kafka：打卡事件异步消费（累计时长、缓存刷新、后续落库/通知等扩展点）
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:127.0.0.1:9092}
+    producer:
+      # 事件体以 JSON 字符串收发，序列化统一用 String，避免类型映射问题
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      retries: 3
+    consumer:
+      group-id: study-checkin-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      # Broker 暂时不可用或主题未创建时，不阻断应用启动
+      missing-topics-fatal: false
+
   rabbitmq:
-    host: 127.0.0.1
-    port: 5672
-    username: guest
-    password: guest
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
 
   # QQ 邮箱 SMTP：MAIL_USERNAME 填你的 QQ 邮箱，MAIL_AUTH_CODE 填 QQ 邮箱生成的 16 位授权码
   # 未配置时验证码只打印到后端日志（[MAIL-MOCK]），不会真正发信
   mail:
     host: smtp.qq.com
     port: 465
-    username: ${MAIL_USERNAME:3305534250@qq.com}
-    password: ${MAIL_AUTH_CODE:vkmejjllywzgcihh}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_AUTH_CODE}
     default-encoding: UTF-8
     properties:
       mail:
@@ -49,15 +74,15 @@ mybatis-plus:
 # 安全与认证配置
 security:
   jwt:
-    secret: ${JWT_SECRET:change-me-please-use-a-long-32-bytes-secret-key}
+    secret: ${JWT_SECRET}
     access-expire: 7200        # 访问令牌有效期（秒），2h
     refresh-expire: 604800     # 刷新令牌有效期（秒），7d
   captcha:
-    enabled: true              # 登录图形验证码
+    enabled: ${CAPTCHA_ENABLED:true}   # 登录图形验证码，本地接口联调可在 .env 里临时关掉
     expire-seconds: 120        # 验证码有效期（秒），一次性使用
   login:
     max-fail: 5                # 连续失败锁定阈值
-    lock-minutes: 3            # 锁定时长（分钟）
+    lock-minutes: 1            # 锁定时长（分钟）
   sms:
     expire-seconds: 300        # 短信验证码有效期（秒）
     cooldown-seconds: 60       # 同一手机号重发冷却（秒）
@@ -67,8 +92,9 @@ security:
     cooldown-seconds: 60       # 同一邮箱重发冷却（秒）
   rate-limit:
     enabled: true
-    global-per-minute: 60      # 单IP每分钟请求上限
-    block-threshold: 300       # 单窗口内超过该值加入黑名单
+    # 本地联调放宽限额：单页加载会触发多条接口，60 次/分钟容易误触 429；生产环境可调回 60 / 300
+    global-per-minute: 600     # 单IP每分钟请求上限
+    block-threshold: 3000      # 单窗口内超过该值加入黑名单
     block-minutes: 10          # 黑名单封禁时长（分钟）
     ua-check-enabled: false    # 无UA拦截（默认关，避免误伤）
 logging:

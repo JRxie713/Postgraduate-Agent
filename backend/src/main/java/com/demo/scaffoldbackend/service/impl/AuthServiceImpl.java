@@ -16,6 +16,7 @@ import com.demo.scaffoldbackend.mapper.UserMapper;
 import com.demo.scaffoldbackend.service.AuthService;
 import com.demo.scaffoldbackend.service.CaptchaService;
 import com.demo.scaffoldbackend.service.EmailCodeService;
+import com.demo.scaffoldbackend.service.RbacService;
 import com.demo.scaffoldbackend.service.SmsService;
 import com.demo.scaffoldbackend.vo.LoginStatusVO;
 import com.demo.scaffoldbackend.vo.TokenVO;
@@ -29,6 +30,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +47,7 @@ public class AuthServiceImpl implements AuthService {
     private final CaptchaService captchaService;
     private final SmsService smsService;
     private final EmailCodeService emailCodeService;
+    private final RbacService rbacService;
 
     @Value("${security.login.max-fail:5}")
     private int maxFail;
@@ -55,7 +58,7 @@ public class AuthServiceImpl implements AuthService {
     public AuthServiceImpl(UserMapper userMapper, PasswordEncoder passwordEncoder,
                            JwtUtil jwtUtil, StringRedisTemplate redis,
                            CaptchaService captchaService, SmsService smsService,
-                           EmailCodeService emailCodeService) {
+                           EmailCodeService emailCodeService, RbacService rbacService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
@@ -63,6 +66,7 @@ public class AuthServiceImpl implements AuthService {
         this.captchaService = captchaService;
         this.smsService = smsService;
         this.emailCodeService = emailCodeService;
+        this.rbacService = rbacService;
     }
 
     @Override
@@ -77,7 +81,7 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(423, "账号已锁定，请 " + formatDuration(lockRemain) + " 后重试");
         }
 
-        // 密码登录不校验图形验证码：由失败次数锁定 + 接口限流防暴力破解，便于演示连续失败锁定
+        // 密码登录不校验图形验证码：由失败次数锁定 + 接口限流防暴力破解
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUserName, userName));
         if (user == null || !passwordEncoder.matches(dto.getPwd(), user.getPwd())) {
             int remaining = recordFailure(userName, lockKey);
@@ -141,12 +145,29 @@ public class AuthServiceImpl implements AuthService {
         String access = jwtUtil.issueAccess(user.getId(), user.getUserRole());
         String refresh = jwtUtil.issueRefresh(user.getId());
         saveTokens(user.getId(), access, refresh);
+        recordDashboardLogin(user);
 
         TokenVO vo = new TokenVO();
         vo.setAccessToken(access);
         vo.setRefreshToken(refresh);
         vo.setExpiresIn(jwtUtil.getAccessExpire());
         return vo;
+    }
+
+    /**
+     * 记录真实登录产生的 Redis 实时指标：当天活跃用户与动态列表。
+     * 同一用户当天重复登录由 Set 自动去重。
+     */
+    private void recordDashboardLogin(User user) {
+        String activeKey = "postgraduate:active:" + LocalDate.now();
+        redis.opsForSet().add(activeKey, String.valueOf(user.getId()));
+        redis.expire(activeKey, Duration.ofDays(8));
+
+        String activityKey = "postgraduate:activity";
+        String activity = LocalDateTime.now() + " · 用户「" + user.getUserName() + "」登录成功";
+        redis.opsForList().leftPush(activityKey, activity);
+        redis.opsForList().trim(activityKey, 0, 99);
+        redis.expire(activityKey, Duration.ofDays(7));
     }
 
     @Override
@@ -199,6 +220,8 @@ public class AuthServiceImpl implements AuthService {
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
+        // 公开注册固定为学生：自动加入“学生组”，获得学生的基础权限
+        rbacService.assignDefaultGroup(user.getId(), "STUDENT");
         return toVO(user);
     }
 
@@ -408,6 +431,7 @@ public class AuthServiceImpl implements AuthService {
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
+        rbacService.assignDefaultGroup(user.getId(), user.getUserRole());
         return toVO(user);
     }
 
@@ -474,6 +498,11 @@ public class AuthServiceImpl implements AuthService {
         }
         user.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(user);
+        // 角色/权限组可能变化，清掉权限缓存；角色变化时补进对应的默认权限组
+        rbacService.evictPermissionCache(id);
+        if (!isBlank(dto.getUserRole())) {
+            rbacService.assignDefaultGroup(id, user.getUserRole());
+        }
         if (sessionChanged) {
             // 角色或状态变化后旧令牌立即失效，重新登录才会拿到新的角色
             invalidateSessions(id);
@@ -493,7 +522,9 @@ public class AuthServiceImpl implements AuthService {
                 throw new BusinessException(400, "系统至少需要保留一个管理员账号");
             }
         }
+        rbacService.saveUserGroups(id, java.util.Collections.emptyList());
         userMapper.deleteById(id);
+        rbacService.evictPermissionCache(id);
         invalidateSessions(id);
         return true;
     }

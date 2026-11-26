@@ -101,8 +101,8 @@ public class UserController {
         return Result.success(authService.loginStatus(userName));
     }
 
-    /** 手动解锁（仅管理员） */
-    @PreAuthorize("hasRole('ADMIN')")
+    /** 手动解锁（需要 user:unlock 权限） */
+    @PreAuthorize("hasAuthority('user:unlock')")
     @PostMapping("/unlock/{userName}")
     public Result<Boolean> unlock(@PathVariable String userName) {
         return Result.success(authService.unlock(userName));
@@ -148,7 +148,7 @@ public class UserController {
     // ===== 用户管理（仅管理员）=====
 
     /** 分页查询用户列表（可按账号/姓名/手机/邮箱搜索、按角色过滤） */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('user:view')")
     @GetMapping
     public Result<PageResult<UserVO>> list(@RequestParam(defaultValue = "1") Integer page,
                                            @RequestParam(defaultValue = "10") Integer size,
@@ -158,28 +158,28 @@ public class UserController {
     }
 
     /** 根据ID查询用户 */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('user:view')")
     @GetMapping("/{id}")
     public Result<UserVO> getById(@PathVariable Integer id) {
         return Result.success(authService.getUser(id));
     }
 
     /** 新增用户：管理员可创建学生 / 教师 / 管理员账号 */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('user:create')")
     @PostMapping
     public Result<UserVO> create(@RequestBody UserDTO userDTO) {
         return Result.success(authService.createUser(userDTO));
     }
 
     /** 更新用户：角色、状态、联系方式、密码重置 */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('user:update')")
     @PutMapping("/{id}")
     public Result<UserVO> update(@PathVariable Integer id, @RequestBody UserDTO userDTO) {
         return Result.success(authService.updateUser(id, userDTO));
     }
 
     /** 删除用户 */
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('user:delete')")
     @DeleteMapping("/{id}")
     public Result<Boolean> delete(@PathVariable Integer id, Authentication authentication) {
         if (authentication != null && String.valueOf(id).equals(authentication.getName())) {

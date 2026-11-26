@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -36,7 +37,16 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public Result<?> handleIllegalArgument(IllegalArgumentException e) {
+        log.error("参数/断言异常: ", e);
         return Result.error(400, e.getMessage());
+    }
+
+    /**
+     * 请求方法不支持（例如用浏览器 GET 打开只收 POST 的接口）
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public Result<?> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        return Result.error(405, "请求方法不支持：该接口需要 " + e.getMethod());
     }
 
     /**

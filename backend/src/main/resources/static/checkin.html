@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学习打卡 · Redis + Kafka 联调页面</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #111418; color: #e6e6e6;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #9aa4b2; font-size: 13px; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .card {
+      background: #1b2027; border: 1px solid #2a313b; border-radius: 12px; padding: 16px;
+    }
+    .card h2 { font-size: 15px; margin: 0 0 12px; color: #7fc4ff; }
+    label { display: block; font-size: 13px; color: #9aa4b2; margin: 8px 0 4px; }
+    input {
+      width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2f3742;
+      background: #12161b; color: #e6e6e6; font-size: 14px;
+    }
+    .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    button {
+      padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer;
+      background: #2f7de1; color: #fff; font-size: 14px;
+    }
+    button.secondary { background: #333c47; }
+    pre {
+      margin-top: 12px; padding: 12px; background: #0d1013; border-radius: 8px;
+      font-size: 13px; overflow: auto; min-height: 48px; white-space: pre-wrap; word-break: break-all;
+    }
+    .tip { color: #8b95a3; font-size: 12px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>学习打卡联调页面（Redis + Kafka）</h1>
+  <div class="sub">页面里的按钮由浏览器内 JS 发请求：打卡是 POST + JSON，概览和榜单是 GET。后端地址默认同源 <code>http://localhost:8080</code>。</div>
+
+  <div class="grid">
+    <!-- 打卡 -->
+    <div class="card">
+      <h2>① 每日打卡（POST）</h2>
+      <label>用户 ID</label>
+      <input id="userId" type="number" value="1001">
+      <label>学习分钟数</label>
+      <input id="minutes" type="number" min="1" max="1440" value="45">
+      <label>科目（可选）</label>
+      <input id="subject" type="text" placeholder="数学 / 英语 / 政治…">
+      <div class="row">
+        <button onclick="checkIn()">提交打卡</button>
+      </div>
+      <pre id="checkinResult">点击后这里显示返回结果</pre>
+    </div>
+
+    <!-- 概览 -->
+    <div class="card">
+      <h2>② 个人学习概览（GET）</h2>
+      <label>用户 ID</label>
+      <input id="overviewUserId" type="number" value="1001">
+      <div class="row">
+        <button onclick="loadOverview()">查询概览</button>
+      </div>
+      <pre id="overviewResult">打卡后稍等 1~2 秒，历史总时长由 Kafka 消费者异步累加。</pre>
+    </div>
+
+    <!-- 榜单 -->
+    <div class="card">
+      <h2>③ 排行榜（GET）</h2>
+      <label>取前 N 名</label>
+      <input id="top" type="number" min="1" max="100" value="10">
+      <div class="row">
+        <button onclick="loadRank('streak')">连续打卡榜</button>
+        <button class="secondary" onclick="loadRank('today')">今日时长榜</button>
+      </div>
+      <pre id="rankResult">点击后这里显示榜单</pre>
+    </div>
+  </div>
+
+<script>
+  // 与后端同源；若后端换了端口，把下面 BASE 改成实际地址，例如 "http://localhost:8081"
+  const BASE = "";
+
+  async function request(method, path, body) {
+    const options = { method, headers: { "Content-Type": "application/json" } };
+    if (body !== undefined) options.body = JSON.stringify(body);
+    const resp = await fetch(BASE + path, options);
+    let json;
+    try { json = await resp.json(); } catch { json = { rawText: await resp.text() }; }
+    return { status: resp.status, body: json };
+  }
+
+  function render(el, result) {
+    el.textContent = JSON.stringify(result.body, null, 2);
+  }
+
+  async function checkIn() {
+    const userId = Number(document.getElementById("userId").value);
+    const minutes = Number(document.getElementById("minutes").value);
+    const subject = document.getElementById("subject").value.trim();
+    const el = document.getElementById("checkinResult");
+    try {
+      const r = await request("POST", "/api/study-checkin", { userId, minutes, subject });
+      render(el, r);
+    } catch (e) {
+      el.textContent = "请求失败：" + e.message;
+    }
+  }
+
+  async function loadOverview() {
+    const userId = document.getElementById("overviewUserId").value;
+    const el = document.getElementById("overviewResult");
+    try {
+      const r = await request("GET", "/api/study-checkin/overview/" + encodeURIComponent(userId));
+      render(el, r);
+    } catch (e) {
+      el.textContent = "请求失败：" + e.message;
+    }
+  }
+
+  async function loadRank(type) {
+    const top = document.getElementById("top").value;
+    const el = document.getElementById("rankResult");
+    try {
+      const path = "/api/study-checkin/rank/" + type + "?top=" + encodeURIComponent(top);
+      const r = await request("GET", path);
+      render(el, r);
+    } catch (e) {
+      el.textContent = "请求失败：" + e.message;
+    }
+  }
+</script>
+</body>
+</html>

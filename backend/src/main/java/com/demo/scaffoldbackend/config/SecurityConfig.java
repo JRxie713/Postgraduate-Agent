@@ -40,6 +40,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtUtil jwtUtil,
                                                    StringRedisTemplate redis,
+                                                   com.demo.scaffoldbackend.service.RbacService rbacService,
                                                    @Value("${security.rate-limit.enabled:true}") boolean rateEnabled,
                                                    @Value("${security.rate-limit.global-per-minute:60}") long globalPerMinute,
                                                    @Value("${security.rate-limit.block-threshold:300}") long blockThreshold,
@@ -48,9 +49,11 @@ public class SecurityConfig {
         // 直接实例化，避免 Filter 以 Bean 形式被 Boot 再注册一次导致重复执行
         RateLimitFilter rateLimitFilter = new RateLimitFilter(redis, objectMapper, rateEnabled,
                 globalPerMinute, blockThreshold, blockMinutes, uaCheckEnabled);
-        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis);
+        JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtUtil, redis, rbacService);
 
         http.csrf(csrf -> csrf.disable())
+            .httpBasic(httpBasic -> httpBasic.disable())
+            .formLogin(formLogin -> formLogin.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
@@ -59,6 +62,11 @@ public class SecurityConfig {
                         "/api/user/captcha", "/api/user/login/status",
                         "/api/user/sms-code", "/api/user/login/sms",
                         "/api/user/email-code", "/api/user/login/email").permitAll()
+                // 学习打卡演示模块（Redis + Kafka）：本地联调放开，生产环境可移除该行并改为登录鉴权
+                .requestMatchers("/api/study-checkin/**", "/checkin.html").permitAll()
+                // WebSocket 握手使用一次性票据自行鉴权；本地文件下载使用带签名的临时令牌
+                .requestMatchers("/ws", "/ws/**", "/api/chat/files/raw").permitAll()
+                .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .anyRequest().authenticated())
