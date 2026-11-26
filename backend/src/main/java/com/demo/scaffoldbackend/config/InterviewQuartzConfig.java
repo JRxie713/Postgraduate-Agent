@@ -21,31 +21,34 @@ import org.springframework.context.event.EventListener;
 /**
  * 复试模块 Quartz 定时任务配置
  *
- * <ul>
- *   <li>每日 09:00：扫描超过 1 天未查看的面试报告</li>
- *   <li>每 5 分钟：扫描进行中但超过 N 分钟未作答的面试，便于演示</li>
- * </ul>
+ * <p>每日任务：09:00 扫描超过 1 天未查看的面试报告。</p>
  *
- * 触发周期可通过配置覆盖，例如演示时想 1 分钟一次：
- * <pre>
- * interview.reminder.idle-cron = 0 0/1 * * * ?
- * interview.reminder.idle-minutes = 1
- * </pre>
+ * <p>超时提醒任务：只需要配置一个数字 {@code interview.reminder.idle-minutes}，
+ * 它同时决定"多久触发一次"和"多久没作答算超时"，两者始终一致。
+ * 例如填 1 表示每分钟检查一次、超过 1 分钟未作答就提醒；填 3 则每 3 分钟检查一次。</p>
  */
 @Slf4j
 @Configuration
 public class InterviewQuartzConfig {
 
-    /** 默认：每天 09:00 */
+    /** 每日提醒时间：默认每天 09:00 */
     @Value("${interview.reminder.cron:0 0 9 * * ?}")
-    private String cron;
+    private String dailyCron;
 
-    /** 默认：每 5 分钟 */
-    @Value("${interview.reminder.idle-cron:0 */5 * * * ?}")
-    private String idleCron;
+    /** 超时提醒：N 分钟（同时作为触发周期与空闲阈值），默认 5 */
+    @Value("${interview.reminder.idle-minutes:5}")
+    private int idleMinutes;
 
     @Autowired(required = false)
     private Scheduler scheduler;
+
+    /**
+     * 由分钟数生成 cron：每 N 分钟的第 0 秒触发
+     */
+    private String idleCronExpression() {
+        int minutes = Math.max(1, Math.min(59, idleMinutes));
+        return "0 0/" + minutes + " * * * ?";
+    }
 
     @Bean
     public JobDetail interviewReminderJobDetail() {
@@ -62,7 +65,7 @@ public class InterviewQuartzConfig {
                 .forJob(interviewReminderJobDetail)
                 .withIdentity("interviewReminderTrigger", "interview")
                 .withDescription("每天 09:00 提醒未读面试报告")
-                .withSchedule(CronScheduleBuilder.cronSchedule(cron)
+                .withSchedule(CronScheduleBuilder.cronSchedule(dailyCron)
                         .withMisfireHandlingInstructionDoNothing())
                 .build();
     }
@@ -81,14 +84,14 @@ public class InterviewQuartzConfig {
         return TriggerBuilder.newTrigger()
                 .forJob(interviewIdleReminderJobDetail)
                 .withIdentity("interviewIdleReminderTrigger", "interview")
-                .withDescription("定时提醒未作答的面试")
-                .withSchedule(CronScheduleBuilder.cronSchedule(idleCron)
+                .withDescription("按配置分钟数定时提醒未作答的面试")
+                .withSchedule(CronScheduleBuilder.cronSchedule(idleCronExpression())
                         .withMisfireHandlingInstructionDoNothing())
                 .build();
     }
 
     /**
-     * 启动完成后打印两个任务的下次触发时间，方便确认定时任务确实生效
+     * 启动完成后打印两个任务的下次触发时间，方便确认定时任务已生效
      */
     @EventListener(ApplicationReadyEvent.class)
     public void logScheduledTriggers() {
@@ -96,6 +99,7 @@ public class InterviewQuartzConfig {
             log.warn("[Quartz] 调度器未就绪，无法输出定时任务信息");
             return;
         }
+        log.info("[Quartz] 超时提醒配置：每 {} 分钟检查一次，超过 {} 分钟未作答即提醒", idleMinutes, idleMinutes);
         logNextFire("interviewReminderTrigger", "每日未读报告提醒");
         logNextFire("interviewIdleReminderTrigger", "超时未作答提醒");
     }
