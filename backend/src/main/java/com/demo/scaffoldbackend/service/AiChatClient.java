@@ -34,8 +34,8 @@ public class AiChatClient {
     @Value("${DEEPSEEK_MODEL:deepseek-flash}")
     private String model;
 
-    /** 单次调用最大输出 token */
-    @Value("${DEEPSEEK_MAX_TOKENS:800}")
+    /** 单次调用最大输出 token（英文点评/报告返回较长，留足余量避免 JSON 被截断） */
+    @Value("${DEEPSEEK_MAX_TOKENS:2000}")
     private int maxTokens;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
