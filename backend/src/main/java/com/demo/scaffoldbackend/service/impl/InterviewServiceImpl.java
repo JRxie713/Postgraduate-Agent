@@ -261,12 +261,19 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public FinalInterviewReportVO getReport(Integer sessionId) {
         InterviewReport report = reportMapper.selectOne(Wrappers.<InterviewReport>lambdaQuery()
                 .eq(InterviewReport::getSessionId, sessionId)
                 .last("limit 1"));
         if (report == null) {
             throw new BusinessException(404, "该场面试还没有生成报告，请先结束面试");
+        }
+        // 用户已打开报告，标记已读：后续定时提醒不再重复打扰
+        if (report.getReportRead() == null || report.getReportRead() == 0) {
+            report.setReportRead(1);
+            report.setUpdateTime(LocalDateTime.now());
+            reportMapper.updateById(report);
         }
         return toReportVO(report);
     }
