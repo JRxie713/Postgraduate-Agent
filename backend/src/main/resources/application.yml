@@ -19,17 +19,11 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
-      password: ${REDIS_PASSWORD}
-      database: 2
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
       timeout: 3000
-
-  # 聊天附件上传：与 chat.file-max-bytes（100MB）保持一致，预留表单开销
-  servlet:
-    multipart:
-      max-file-size: 105MB
-      max-request-size: 110MB
 
   # Kafka：打卡事件异步消费（累计时长、缓存刷新、后续落库/通知等扩展点）
   kafka:
@@ -49,11 +43,11 @@ spring:
       # Broker 暂时不可用或主题未创建时，不阻断应用启动
       missing-topics-fatal: false
 
-#  rabbitmq:
-#    host: ${RABBITMQ_HOST:127.0.0.1}
-#    port: ${RABBITMQ_PORT:5672}
-#    username: ${RABBITMQ_USERNAME}
-#    password: ${RABBITMQ_PASSWORD}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
 
   # QQ 邮箱 SMTP：MAIL_USERNAME 填你的 QQ 邮箱，MAIL_AUTH_CODE 填 QQ 邮箱生成的 16 位授权码
   # 未配置时验证码只打印到后端日志（[MAIL-MOCK]），不会真正发信
@@ -103,37 +97,7 @@ security:
     block-threshold: 3000      # 单窗口内超过该值加入黑名单
     block-minutes: 10          # 黑名单封禁时长（分钟）
     ua-check-enabled: false    # 无UA拦截（默认关，避免误伤）
-
-# 实时聊天（WebSocket + STOMP）
-chat:
-  group-max-members: 200       # 群聊/自习室人数上限
-  image-max-bytes: 10485760    # 图片上限 10MB
-  file-max-bytes: 104857600    # 文件上限 100MB
-  recall-seconds: 120          # 消息可撤回时限（秒）
-  ticket-ttl-seconds: 60       # WebSocket 一次性票据有效期（秒）
-  fanout-channel: chat:fanout  # 多实例 Redis Pub/Sub 广播频道
-  storage:
-    # local：本机磁盘，仅适合单实例本地开发；oss：阿里云对象存储，多实例部署必须使用 oss
-    type: ${CHAT_STORAGE_TYPE}
-    local-dir: ${CHAT_STORAGE_LOCAL_DIR:./data/chat-files}
-    download-expire-seconds: 600   # 下载地址有效期（秒）
-  oss:
-    endpoint: ${OSS_ENDPOINT:}
-    bucket: ${OSS_BUCKET:}
-    access-key-id: ${OSS_ACCESS_KEY_ID:}
-    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
 logging:
   level:
     com.zaxxer.hikari: DEBUG
     com.mysql.cj: DEBUG
-    # Broker 刚启动时协调器还在加载 __consumer_offsets，客户端重试会刷屏；
-    # 这些重试可自动恢复，降级为 WARN，真正的异常仍然可见。
-    org.apache.kafka.clients: WARN
-    org.apache.kafka.common: WARN
-
-management:
-  health:
-    rabbit:
-      enabled: false
-    mail:
-      enabled: false

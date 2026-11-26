@@ -2,6 +2,7 @@
 -- kaoyan 数据库完整导出（建表 + 数据）
 -- 数据库：kaoyan    字符集：utf8mb4
 -- ============================================================
+use kaoyan;
 SET NAMES utf8mb4;
 
 DROP TABLE IF EXISTS `consultation`;
@@ -307,7 +308,7 @@ CREATE TABLE `zt_group` (
                             `update_time` datetime DEFAULT NULL,
                             PRIMARY KEY (`id`),
                             UNIQUE KEY `uk_group_name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='权限组';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='权限组';
 
 INSERT INTO `zt_group` (`id`, `name`, `description`, `status`, `create_time`, `update_time`) VALUES (1,'学生组','只读：查看政策资讯、使用学习功能','NORMAL','2026-11-17 12:06:19','2026-11-17 12:38:01');
 
@@ -323,7 +324,7 @@ CREATE TABLE `zt_grouppriv` (
                                 `method` varchar(32) NOT NULL COMMENT '方法，如 view',
                                 PRIMARY KEY (`id`),
                                 UNIQUE KEY `uk_group_priv` (`group_id`,`module`,`method`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='组权限（模块-方法）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='组权限（模块-方法）';
 
 INSERT INTO `zt_grouppriv` (`id`, `group_id`, `module`, `method`) VALUES (35,1,'policy','view');
 
@@ -362,7 +363,7 @@ CREATE TABLE `zt_usergroup` (
                                 `group_id` int(11) NOT NULL COMMENT '权限组ID',
                                 PRIMARY KEY (`id`),
                                 UNIQUE KEY `uk_user_group` (`user_id`,`group_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户-权限组';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户-权限组';
 
 INSERT INTO `zt_usergroup` (`id`, `user_id`, `group_id`) VALUES (2,-1039527935,1);
 
