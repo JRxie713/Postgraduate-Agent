@@ -135,15 +135,18 @@ CREATE TABLE interview_english_review (
 -- ------------------------------------------------------------
 -- 6. 旧表增强: interview_record 补字段
 --    (保留旧表做历史兼容, 新业务用上面 5 张表)
+--    注意: 旧表不是本模块建的, 队友库里可能没有;
+--          没有该表时下面两条 ALTER 会自动跳过, 不影响本脚本执行
 -- ------------------------------------------------------------
--- 执行前先判断列是否存在, 避免重复执行报错
+-- 执行前先判断表/列是否存在, 避免重复执行或旧表不存在时报错
 SET @dbname = DATABASE();
 SET @tablename = 'interview_record';
 
 -- 补: 新会话ID关联
 SET @columnname = 'session_id';
 SET @preparedStatement = (SELECT IF(
-  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = @columnname) > 0,
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename) = 0
+  OR (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = @columnname) > 0,
   'SELECT 1',
   'ALTER TABLE interview_record ADD COLUMN session_id INT COMMENT "关联的 interview_session.id" AFTER id'
 ));
@@ -154,7 +157,8 @@ DEALLOCATE PREPARE alterIfNotExists;
 -- 补: 轮次
 SET @columnname = 'round_index';
 SET @preparedStatement = (SELECT IF(
-  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = @columnname) > 0,
+  (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename) = 0
+  OR (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = @columnname) > 0,
   'SELECT 1',
   'ALTER TABLE interview_record ADD COLUMN round_index INT DEFAULT 0 COMMENT "第几轮" AFTER session_id'
 ));
