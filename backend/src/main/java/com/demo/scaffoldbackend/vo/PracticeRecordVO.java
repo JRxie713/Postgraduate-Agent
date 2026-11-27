@@ -1,6 +1,8 @@
 package com.demo.scaffoldbackend.vo;
 
 import lombok.Data;
+import tools.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.ser.std.ToStringSerializer;
 
 import java.time.LocalDateTime;
 
@@ -10,7 +12,8 @@ import java.time.LocalDateTime;
 @Data
 public class PracticeRecordVO {
 
-    /** 记录ID */
+    /** 记录ID（雪花/BigInt，序列化为 String 防 JS 精度丢失） */
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
     /** 题目ID */

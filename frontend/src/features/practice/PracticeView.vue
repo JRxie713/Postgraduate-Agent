@@ -294,11 +294,10 @@ function quitDaily() {
 async function openRecordDetail(item) {
   recordDetail.value = { loading: true }
   const res = await practiceRecordDetail(item.id)
-  if (res.code === 200) {
+  if (res.code === 200 && res.data) {
     recordDetail.value = res.data
   } else {
-    recordDetail.value = null
-    message.value = res.message || '加载题目详情失败'
+    recordDetail.value = { loading: false, error: res.message || '加载题目详情失败（接口未生效？请重启后端）' }
   }
 }
 // 顶部统计卡点击：跳到对应明细
@@ -741,6 +740,16 @@ onMounted(() => {
     <div v-if="recordDetail" class="overlay" @click.self="recordDetail = null">
       <div class="modal">
         <p v-if="recordDetail.loading" class="empty">加载题目详情…</p>
+        <template v-else-if="recordDetail.error">
+          <div class="result failure">
+            <h3>加载失败</h3>
+            <p>{{ recordDetail.error }}</p>
+            <p class="meta">可能原因：后端未重启（缺少 /api/practice/records/{id} 接口）或这条记录不存在。</p>
+          </div>
+          <div class="result-actions">
+            <button class="ghost" type="button" @click="recordDetail = null">关闭</button>
+          </div>
+        </template>
         <template v-else>
           <div class="tags">
             <span class="tag subject">{{ recordDetail.examSubject }}</span>
