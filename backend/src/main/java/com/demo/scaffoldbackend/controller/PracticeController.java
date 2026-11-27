@@ -78,6 +78,14 @@ public class PracticeController {
         return Result.success(practiceService.similarQuestions(currentUserId(), questionId, limit));
     }
 
+    /** 每日一练：自定义题量随机抽题 */
+    @GetMapping("/daily")
+    public Result<List<PracticeQuestionVO>> daily(@RequestParam(defaultValue = "10") Integer count,
+                                                  @RequestParam(required = false) String examSubject,
+                                                  @RequestParam(required = false) String difficulty) {
+        return Result.success(practiceService.dailyQuestions(currentUserId(), count, examSubject, difficulty));
+    }
+
     /** 筛选项：科目、章节、知识点、难度 */
     @GetMapping("/options")
     public Result<PracticeOptionsVO> options() {

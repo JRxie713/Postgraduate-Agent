@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import {
   practiceOptions,
   practiceQuestions,
+  practiceDaily,
   practiceRecords,
   practiceSimilar,
   practiceSummary,
@@ -14,7 +15,7 @@ import {
 import { TOKEN_KEY } from '../../api/http'
 
 const hasToken = ref(Boolean(localStorage.getItem(TOKEN_KEY)))
-const tab = ref('practice')
+const tab = ref('daily')
 const message = ref('')
 
 // ===== 概览 =====
@@ -222,6 +223,66 @@ function turnRecordPage(delta) {
   loadRecords()
 }
 
+// ===== 每日一练 =====
+const dailyConfig = reactive({ count: 10, examSubject: '', difficulty: '' })
+const daily = ref(null)
+const dailyAnswer = ref('')
+const dailyResult = ref(null)
+const dailySubmitting = ref(false)
+const dailyCurrent = computed(() => (daily.value ? daily.value.list[daily.value.index] : null))
+const dailyCorrect = computed(() => (daily.value ? daily.value.answers.filter((a) => a.correct).length : 0))
+const dailyAccuracy = computed(() =>
+  daily.value && daily.value.list.length ? Math.round((dailyCorrect.value / daily.value.list.length) * 100) : 0
+)
+const dailyWrongList = computed(() => (daily.value ? daily.value.answers.filter((a) => !a.correct) : []))
+
+async function startDaily() {
+  const count = Number(dailyConfig.count)
+  if (!Number.isInteger(count) || count < 1 || count > 50) {
+    message.value = '出题数量需为 1-50 的整数'
+    return
+  }
+  const res = await practiceDaily({ count, examSubject: dailyConfig.examSubject, difficulty: dailyConfig.difficulty })
+  if (res.code !== 200) {
+    message.value = res.message || '抽题失败'
+    return
+  }
+  if (!res.data || !res.data.length) {
+    message.value = '没有符合条件的题目，请调整筛选或先初始化题库'
+    return
+  }
+  daily.value = { list: res.data, index: 0, answers: [], finished: false }
+  dailyAnswer.value = ''
+  dailyResult.value = null
+}
+async function submitDaily() {
+  if (!dailyAnswer.value || dailySubmitting.value || !dailyCurrent.value) return
+  dailySubmitting.value = true
+  const res = await submitPracticeAnswer({ questionId: dailyCurrent.value.id, userAnswer: dailyAnswer.value })
+  if (res.code === 200) {
+    dailyResult.value = res.data
+    daily.value.answers.push(res.data)
+  } else {
+    message.value = res.message || '提交答案失败'
+  }
+  dailySubmitting.value = false
+}
+function nextDaily() {
+  if (daily.value.index + 1 < daily.value.list.length) {
+    daily.value.index++
+    dailyAnswer.value = ''
+    dailyResult.value = null
+  } else {
+    daily.value.finished = true
+    loadSummary()
+  }
+}
+function quitDaily() {
+  daily.value = null
+  dailyResult.value = null
+  loadSummary()
+}
+
 function switchTab(next) {
   tab.value = next
   if (next === 'wrong') loadWrong()
@@ -267,6 +328,7 @@ onMounted(() => {
 
     <template v-else>
       <nav class="tabs">
+        <button :class="{ active: tab === 'daily' }" type="button" @click="switchTab('daily')">每日一练</button>
         <button :class="{ active: tab === 'practice' }" type="button" @click="switchTab('practice')">题库练习</button>
         <button :class="{ active: tab === 'wrong' }" type="button" @click="switchTab('wrong')">错题本</button>
         <button :class="{ active: tab === 'records' }" type="button" @click="switchTab('records')">练习记录</button>
@@ -420,7 +482,7 @@ onMounted(() => {
       </section>
 
       <!-- 练习记录 -->
-      <section v-else>
+      <section v-else-if="tab === 'records'">
         <div class="filter">
           <label class="check">
             <input v-model="onlyWrong" type="checkbox" @change="recordPage.page = 1; loadRecords()" />
@@ -449,6 +511,110 @@ onMounted(() => {
           <span>第 {{ recordPage.page }} 页 · 共 {{ recordPage.total }} 条</span>
           <button class="ghost" type="button" :disabled="recordPage.page * recordPage.size >= recordPage.total" @click="turnRecordPage(1)">下一页</button>
         </div>
+      </section>
+
+      <!-- 每日一练 -->
+      <section v-else>
+        <div v-if="!daily" class="daily-config">
+          <div class="filter">
+            <label>
+              <span>出题数量（1-50）</span>
+              <input v-model.number="dailyConfig.count" type="number" min="1" max="50" />
+            </label>
+            <label>
+              <span>科目（可选）</span>
+              <select v-model="dailyConfig.examSubject">
+                <option value="">全部科目</option>
+                <option v-for="s in options.subjects" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </label>
+            <label>
+              <span>难度（可选）</span>
+              <select v-model="dailyConfig.difficulty">
+                <option value="">全部难度</option>
+                <option v-for="d in options.difficulties" :key="d" :value="d">{{ d }}</option>
+              </select>
+            </label>
+            <button class="primary" type="button" @click="startDaily">开始今日训练</button>
+          </div>
+          <p class="tip">系统按你的设置随机抽题，逐题作答、即时判题并展示解析，答错自动进入错题本，最后生成本轮成绩。</p>
+        </div>
+
+        <template v-else-if="!daily.finished">
+          <div class="daily-progress">
+            <span>第 {{ daily.index + 1 }} / {{ daily.list.length }} 题 · 已答对 {{ dailyCorrect }}</span>
+            <div class="bar"><i :style="{ width: ((daily.index + (dailyResult ? 1 : 0)) / daily.list.length * 100) + '%' }"></i></div>
+            <button class="link" type="button" @click="quitDaily">退出本轮</button>
+          </div>
+          <div class="question-card daily-card">
+            <div class="tags">
+              <span class="tag subject">{{ dailyCurrent.examSubject }}</span>
+              <span class="tag">{{ dailyCurrent.chapter }}</span>
+              <span class="tag point">{{ dailyCurrent.knowledgePoint }}</span>
+              <span class="tag difficulty">{{ dailyCurrent.difficulty }}</span>
+            </div>
+            <p class="question-text">{{ dailyCurrent.questionText }}</p>
+            <div class="option-list">
+              <button
+                v-for="opt in dailyCurrent.options"
+                :key="opt.key"
+                :class="['option', {
+                  selected: dailyAnswer === opt.key,
+                  right: dailyResult && dailyResult.correctAnswer === opt.key,
+                  mine: dailyResult && !dailyResult.correct && dailyResult.userAnswer === opt.key
+                }]"
+                type="button"
+                :disabled="!!dailyResult"
+                @click="dailyAnswer = opt.key"
+              >
+                <span class="opt-key">{{ opt.key }}</span>
+                <span class="opt-text">{{ opt.text }}</span>
+              </button>
+            </div>
+            <button v-if="!dailyResult" class="primary submit" type="button" :disabled="!dailyAnswer || dailySubmitting" @click="submitDaily">
+              {{ dailySubmitting ? '判题中…' : '提交答案' }}
+            </button>
+            <div v-else :class="['result', dailyResult.correct ? 'success' : 'failure']">
+              <h3>{{ dailyResult.correct ? '回答正确！' : '回答错误' }}</h3>
+              <p>正确答案：<b>{{ dailyResult.correctAnswer }}</b>&nbsp;&nbsp;你的答案：<b>{{ dailyResult.userAnswer }}</b></p>
+              <p v-if="dailyResult.newlyAdded" class="auto">已自动加入错题本</p>
+              <p v-else-if="!dailyResult.correct" class="auto">错题已更新，累计答错 {{ dailyResult.wrongCount }} 次</p>
+              <div class="analysis">
+                <h4>解析</h4>
+                <p>{{ dailyResult.analysis || '暂无解析' }}</p>
+              </div>
+              <div class="result-actions">
+                <button class="primary" type="button" @click="nextDaily">{{ daily.index + 1 < daily.list.length ? '下一题' : '查看成绩' }}</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <section v-else class="session">
+          <div class="session-head">
+            <h2>本轮训练成绩</h2>
+            <div class="session-nums">
+              <span>共 {{ daily.list.length }} 题</span>
+              <span>答对 {{ dailyCorrect }}</span>
+              <strong>正确率 {{ dailyAccuracy }}%</strong>
+            </div>
+          </div>
+          <div v-if="dailyWrongList.length" class="session-wrong">
+            <p class="session-wrong-title">答错题目（已自动进入错题本）：</p>
+            <ul>
+              <li v-for="(item, i) in dailyWrongList" :key="i">
+                <span>{{ item.questionText }}</span>
+                <em>你的答案 {{ item.userAnswer }} · 正确答案 {{ item.correctAnswer }}</em>
+              </li>
+            </ul>
+          </div>
+          <p v-else class="all-right">全部答对，今日状态满分！</p>
+          <div class="result-actions">
+            <button class="primary" type="button" @click="quitDaily(); switchTab('wrong')">去错题本复习</button>
+            <button class="ghost" type="button" @click="startDaily">再来一轮</button>
+            <button class="link" type="button" @click="quitDaily">返回设置</button>
+          </div>
+        </section>
       </section>
     </template>
 
@@ -577,7 +743,7 @@ onMounted(() => {
 .filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 14px 16px; background: #fff; border: 1px solid #e8edf5; border-radius: 12px; }
 .filter label { display: grid; gap: 5px; font-size: 12px; color: #6b7688; }
 .filter label.grow { flex: 1; min-width: 180px; }
-.filter input[type='text'], .filter select { padding: 8px 10px; border: 1px solid #dde4ee; border-radius: 8px; font-size: 13px; background: #fff; min-width: 120px; }
+.filter input[type='text'], .filter input[type='number'], .filter select { padding: 8px 10px; border: 1px solid #dde4ee; border-radius: 8px; font-size: 13px; background: #fff; min-width: 120px; }
 .filter .check { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: 13px; }
 .primary, .ghost, .danger { padding: 9px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid transparent; }
 .primary { background: #2f6fe4; color: #fff; }
@@ -651,6 +817,11 @@ onMounted(() => {
 .special-list { display: grid; gap: 12px; margin-top: 12px; }
 .special-item { padding: 14px; border: 1px solid #e8edf5; border-radius: 12px; display: grid; gap: 8px; }
 .special-item .primary { justify-self: end; }
+.daily-config .tip { margin: 10px 4px 0; }
+.daily-progress { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; font-size: 13px; color: #46526b; }
+.daily-progress .bar { flex: 1; height: 8px; border-radius: 999px; background: #e8edf5; overflow: hidden; }
+.daily-progress .bar i { display: block; height: 100%; border-radius: 999px; background: #2f6fe4; transition: width .3s; }
+.daily-card { margin-top: 0; }
 @media (max-width: 720px) {
   .record-row { grid-template-columns: 1fr; gap: 4px; }
   .record-head { display: none; }

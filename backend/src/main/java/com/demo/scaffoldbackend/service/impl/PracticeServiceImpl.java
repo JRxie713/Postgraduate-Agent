@@ -254,8 +254,17 @@ public class PracticeServiceImpl implements PracticeService {
     }
 
     @Override
-    public PracticeOptionsVO options() {
-        List<ExamQuestion> questions = examQuestionMapper.selectList(Wrappers.<ExamQuestion>lambdaQuery()
+    public List<PracticeQuestionVO> dailyQuestions(Integer userId, int count, String examSubject, String difficulty) {
+        int safeCount = Math.max(1, Math.min(count, 50));
+        LambdaQueryWrapper<ExamQuestion> wrapper = Wrappers.<ExamQuestion>lambdaQuery()
+                .eq(hasText(examSubject), ExamQuestion::getExamSubject, trim(examSubject))
+                .eq(hasText(difficulty), ExamQuestion::getDifficulty, trim(difficulty))
+                .last("ORDER BY RAND() LIMIT " + safeCount);
+        return assembleQuestions(examQuestionMapper.selectList(wrapper), userId);
+    }
+
+    @Override
+    public PracticeOptionsVO options() {        List<ExamQuestion> questions = examQuestionMapper.selectList(Wrappers.<ExamQuestion>lambdaQuery()
                 .select(ExamQuestion::getExamSubject, ExamQuestion::getChapter,
                         ExamQuestion::getKnowledgePoint, ExamQuestion::getDifficulty));
 

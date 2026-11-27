@@ -36,6 +36,9 @@ public interface PracticeService {
     /** 同知识点同类题（专项练习） */
     List<PracticeQuestionVO> similarQuestions(Integer userId, Integer questionId, int limit);
 
+    /** 每日一练：按题量随机抽题，可搭配科目 / 难度筛选 */
+    List<PracticeQuestionVO> dailyQuestions(Integer userId, int count, String examSubject, String difficulty);
+
     /** 筛选项（科目 / 章节 / 知识点 / 难度） */
     PracticeOptionsVO options();
 }

@@ -28,6 +28,8 @@ export const practiceSummary = () => request('/practice/summary')
 export const practiceSimilar = (questionId, limit = 5) =>
   request(`/practice/similar/${questionId}${toQuery({ limit })}`)
 
+export const practiceDaily = (params = {}) => request(`/practice/daily${toQuery(params)}`)
+
 // ===== 错题本 =====
 export const wrongQuestionList = (params = {}) => request(`/wrong-questions${toQuery(params)}`)
 
