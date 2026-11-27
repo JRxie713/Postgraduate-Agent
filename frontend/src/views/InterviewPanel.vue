@@ -98,7 +98,11 @@ async function resumeReminder(item) {
   // 先刷新后端活跃时间，让"闲置分钟数"从 0 重新计算
   await heartbeatInterview(item.sessionId)
   reminders.value = reminders.value.filter((row) => row.sessionId !== item.sessionId)
-  await openHistory({ id: item.sessionId, status: 'ongoing' })
+  // 已经停留在这一场面试：只刷新计时，不重新加载，避免清空正在输入的草稿
+  const alreadyHere = session.value && session.value.id === item.sessionId && turn.value
+  if (!alreadyHere) {
+    await openHistory({ id: item.sessionId, status: 'ongoing' })
+  }
   await pollReminders()
 }
 
@@ -133,7 +137,7 @@ const statusText = (value) => ({ ongoing: '进行中', finished: '已结束', ab
 const scoreOf = (value) => (value == null ? '—' : Math.round(value * 10) / 10)
 const answered = computed(() => !!turn.value && !!turn.value.studentAnswer)
 
-// 超时提醒只在"正在作答"界面显示：查看历史评分、报告页都不打扰
+// 超时提醒只在"正在作答且还没动笔"时显示：查看历史评分、报告页、已开始输入都不打扰
 const showReminders = computed(
   () =>
     reminders.value.length > 0 &&
@@ -141,7 +145,8 @@ const showReminders = computed(
     !!session.value &&
     session.value.status === 'ongoing' &&
     !!turn.value &&
-    !answered.value
+    !answered.value &&
+    !answer.value.trim()
 )
 
 // 单题综合分（与报告同权重换算到 100 分制）
