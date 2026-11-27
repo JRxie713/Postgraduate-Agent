@@ -39,7 +39,8 @@ import java.util.stream.Collectors;
 /**
  * 复试 AI 训练服务实现
  *
- * <p>出题完全来自题库表，大模型只承担：单题点评打分、压力追问、英语批改、最终报告。
+ * <p>出题：配置了 AI Key 时由大模型生成（question_id 为空），否则从题库表抽取；
+ * 大模型还承担单题点评打分、压力追问、英语批改、最终报告。
  * 无 Key / 调用失败时统一走规则化兜底（ruleBased=1），保证功能闭环可演示。</p>
  */
 @Slf4j
@@ -84,21 +85,31 @@ public class InterviewServiceImpl implements InterviewService {
         String type = normalizeType(dto.getTrainingType());
         String difficulty = normalizeDifficulty(dto.getDifficulty());
         boolean pressure = Boolean.TRUE.equals(dto.getPressureMode());
+        String major = dto.getMajor().trim();
+        int totalRounds = "english".equals(type) ? 2 : 3;
+
+        // 有 Key 时先让大模型出题（此时不持有数据库连接），失败则回退题库
+        List<String> aiQuestions = generateAiQuestions(major, type, difficulty, pressure,
+                dto.getBackground(), totalRounds);
 
         InterviewSession session = new InterviewSession();
         session.setUserId(userId);
-        session.setMajor(dto.getMajor().trim());
+        session.setMajor(major);
         session.setTrainingType(type);
         session.setDifficulty(difficulty);
         session.setPressureMode(pressure ? 1 : 0);
-        session.setTotalRounds("english".equals(type) ? 2 : 3);
+        session.setTotalRounds(totalRounds);
         session.setCurrentRound(0);
         session.setStatus(STATUS_ONGOING);
         session.setCreateTime(LocalDateTime.now());
         session.setUpdateTime(LocalDateTime.now());
         sessionMapper.insert(session);
 
-        createNextTurn(session, pressure);
+        if (aiQuestions.isEmpty()) {
+            createNextTurn(session, pressure);
+        } else {
+            saveAiTurns(session, aiQuestions);
+        }
         return toSessionVO(session);
     }
 
@@ -365,6 +376,98 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     // ==================== 内部：出题 ====================
+
+    private static final String QUESTION_SYSTEM_PROMPT =
+            "你是考研复试面试官，负责为模拟面试出题。只输出 JSON，不要任何多余文字。";
+
+    /**
+     * 大模型出题：未配置 Key、网络异常、返回格式无效时返回空列表，由调用方回退数据库题库
+     */
+    private List<String> generateAiQuestions(String major, String type, String difficulty,
+                                             boolean pressure, String background, int count) {
+        if (!aiChatClient.isEnabled()) {
+            log.info("[AI出题] 未配置 API Key，使用数据库题库");
+            return new ArrayList<>();
+        }
+
+        StringBuilder user = new StringBuilder();
+        user.append("目标专业：").append(major).append("\n")
+                .append("面试类型：").append(typeLabel(type)).append("\n")
+                .append("难度：").append(difficultyLabel(difficulty)).append("\n")
+                .append("压力面试：").append(pressure ? "是（题目可以更尖锐、更追问细节）" : "否").append("\n");
+        if (background != null && !background.isBlank()) {
+            user.append("考生背景/报考方向：").append(background.trim()).append("\n")
+                    .append("请结合该背景设计有针对性的问题。\n");
+        }
+        if ("english".equals(type)) {
+            user.append("面试语言：英文（题目用英文表述）\n");
+        }
+        user.append("请出 ").append(count).append(" 道互不重复的面试题，覆盖不同考察角度，每题不超过 60 字。\n")
+                .append("请严格输出 JSON：{\"questions\":[\"题目1\",\"题目2\"]}");
+
+        JsonNode node = aiChatClient.parseJson(aiChatClient.chat(QUESTION_SYSTEM_PROMPT, user.toString()));
+        List<String> list = new ArrayList<>();
+        if (node != null && node.path("questions").isArray()) {
+            node.path("questions").forEach(n -> {
+                String q = n.asText("").trim();
+                if (!q.isEmpty() && list.size() < count) {
+                    list.add(q);
+                }
+            });
+        }
+        if (list.isEmpty()) {
+            log.info("[AI出题] 大模型返回无效，回退数据库题库");
+        } else {
+            log.info("[AI出题] 生成 {} 道题（专业={}，类型={}，难度={}）", list.size(), major, type, difficulty);
+        }
+        return list;
+    }
+
+    /**
+     * 保存 AI 生成的题目：question_id 留空即代表"非题库题"，前端据此显示「AI 出题」标签
+     */
+    private void saveAiTurns(InterviewSession session, List<String> questions) {
+        int round = 1;
+        for (String q : questions) {
+            InterviewTurn turn = new InterviewTurn();
+            turn.setSessionId(session.getId());
+            turn.setRoundIndex(round++);
+            turn.setQuestionId(null);
+            turn.setQuestion(q);
+            turn.setIsFollowup(0);
+            turn.setRuleBased(0);
+            turn.setCreateTime(LocalDateTime.now());
+            turn.setUpdateTime(LocalDateTime.now());
+            turnMapper.insert(turn);
+        }
+        session.setTotalRounds(questions.size());
+        session.setUpdateTime(LocalDateTime.now());
+        sessionMapper.updateById(session);
+    }
+
+    private String typeLabel(String type) {
+        switch (type) {
+            case "professional":
+                return "专业面试";
+            case "pressure":
+                return "压力面试";
+            case "english":
+                return "英语面试";
+            default:
+                return "综合面试";
+        }
+    }
+
+    private String difficultyLabel(String difficulty) {
+        switch (difficulty) {
+            case "easy":
+                return "简单";
+            case "hard":
+                return "困难";
+            default:
+                return "中等";
+        }
+    }
 
     /**
      * 创建下一轮的题目（从题库抽题）

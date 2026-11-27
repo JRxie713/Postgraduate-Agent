@@ -27,4 +27,8 @@ public class CreateInterviewSessionDTO {
 
     /** 是否开启压力面试 */
     private Boolean pressureMode = false;
+
+    /** 报考方向 / 简历要点（可选）：配置 AI Key 时用于生成更贴合个人的题目 */
+    @Size(max = 500)
+    private String background;
 }

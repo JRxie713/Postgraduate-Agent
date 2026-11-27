@@ -39,7 +39,8 @@ const setup = ref({
   major: '计算机',
   trainingType: 'professional',
   difficulty: 'medium',
-  pressureMode: false
+  pressureMode: false,
+  background: ''
 })
 
 const session = ref(null)
@@ -163,7 +164,8 @@ async function beginInterview() {
       major: setup.value.major,
       trainingType: setup.value.trainingType,
       difficulty: setup.value.difficulty,
-      pressureMode: setup.value.pressureMode
+      pressureMode: setup.value.pressureMode,
+      background: setup.value.background ? setup.value.background.trim() : null
     })
     if (data.code === 200) {
       session.value = data.data
@@ -392,6 +394,15 @@ function switchSub(name) {
             <span>开启压力追问</span>
           </label>
         </div>
+        <label class="background-field">
+          <span>报考方向 / 简历要点（可选，配置 AI 后用于生成更有针对性的题目）</span>
+          <textarea
+            v-model="setup.background"
+            rows="2"
+            maxlength="500"
+            placeholder="例如：报考计算机学硕，做过基于 Spring Boot 的考研平台，熟悉 Redis 与 Kafka"
+          ></textarea>
+        </label>
         <button class="primary" type="button" :disabled="busy" @click="beginInterview">
           {{ busy ? '准备中…' : '开始模拟面试' }}
         </button>
@@ -411,6 +422,7 @@ function switchSub(name) {
           <p class="q-label">
             面试官提问
             <span v-if="turn.isFollowup" class="badge">追问</span>
+            <span v-else-if="!turn.questionId" class="badge ai">AI 出题</span>
           </p>
           <p class="q-text">{{ turn.question }}</p>
         </div>
@@ -649,6 +661,14 @@ function switchSub(name) {
 .badge { margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 11px; }
 .badge.ok { background: #ecfdf3; color: #067647; }
 .badge.warn { background: #fffaeb; color: #b54708; }
+.badge.ai { background: #eef4ff; color: #2a5bd7; }
+.background-field { display: block; margin-top: 12px; }
+.background-field span { display: block; margin-bottom: 6px; font-size: 12px; color: #7a869a; }
+.background-field textarea {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid #dde4ee; border-radius: 10px;
+  font-size: 13px; line-height: 1.6; resize: vertical;
+}
 .answer {
   width: 100%; margin-top: 14px; padding: 12px 14px; box-sizing: border-box;
   border: 1px solid #dde4ee; border-radius: 10px; font-size: 13px; line-height: 1.7;
