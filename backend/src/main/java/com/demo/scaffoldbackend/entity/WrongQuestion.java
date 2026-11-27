@@ -31,6 +31,9 @@ public class WrongQuestion {
     /** 复习次数 */
     private Integer reviewCount;
 
+    /** 累计答错次数 */
+    private Integer wrongCount;
+
     /** 记录创建时间 */
     private LocalDateTime createTime;
 

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>刷题训练与错题本</title>
+  <style>
+    body { margin: 0; background: #f4f7fb; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <!--
+    组员 2 独立演示入口：开发环境直接访问 http://localhost:5173/practice.html
+    正式集成时由组长把 src/features/practice/PracticeView.vue 挂到 HomeView.vue 侧边栏，本页可删除。
+    注意：接口需要登录令牌，请先在主应用（/）登录后再打开本页。
+  -->
+  <script type="module">
+    import { createApp } from 'vue'
+    import PracticeView from '/src/features/practice/PracticeView.vue'
+    createApp(PracticeView).mount('#app')
+  </script>
+</body>
+</html>
