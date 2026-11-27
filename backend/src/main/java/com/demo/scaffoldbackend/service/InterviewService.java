@@ -40,6 +40,9 @@ public interface InterviewService {
     /** 获取当前待作答的题目（没有则自动出下一题） */
     InterviewTurnVO getCurrentQuestion(Integer sessionId);
 
+    /** 查询已作答的历史轮次（回看上一题的评价，只读，不影响超时计时） */
+    List<InterviewTurnVO> listAnsweredTurns(Integer sessionId);
+
     /** 提交本轮回答，触发 AI 打分与点评 */
     InterviewTurnVO submitAnswer(Integer sessionId, AnswerInterviewDTO dto);
 

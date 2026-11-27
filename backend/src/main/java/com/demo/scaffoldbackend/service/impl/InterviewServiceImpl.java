@@ -205,6 +205,17 @@ public class InterviewServiceImpl implements InterviewService {
     }
 
     @Override
+    public List<InterviewTurnVO> listAnsweredTurns(Integer sessionId) {
+        requireSession(sessionId);
+        return turnMapper.selectList(Wrappers.<InterviewTurn>lambdaQuery()
+                        .eq(InterviewTurn::getSessionId, sessionId)
+                        .isNotNull(InterviewTurn::getStudentAnswer)
+                        .ne(InterviewTurn::getStudentAnswer, "")
+                        .orderByAsc(InterviewTurn::getRoundIndex))
+                .stream().map(this::toTurnVO).collect(Collectors.toList());
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public InterviewTurnVO submitAnswer(Integer sessionId, AnswerInterviewDTO dto) {
         InterviewSession session = requireSession(sessionId);

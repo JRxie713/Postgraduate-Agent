@@ -11,6 +11,7 @@ import {
   interviewReminders,
   listEnglishReviews,
   listInterviewSessions,
+  listInterviewTurns,
   reviewEnglishIntro,
   startInterview,
   submitInterviewAnswer
@@ -179,13 +180,65 @@ watch(answer, (val, old) => {
 })
 
 // 单题综合分（与报告同权重换算到 100 分制）
-const turnTotal = computed(() => {
-  const t = turn.value
+function totalOf(t) {
   if (!t || t.aiExpression == null) return null
   const weighted =
     (t.aiExpression * 0.2 + t.aiProfessional * 0.3 + t.aiLogic * 0.2 + t.aiAdaptability * 0.15) / 0.85
   return Math.round(weighted * 10) / 10
+}
+
+function scoresOf(t) {
+  if (!t) return []
+  return [
+    { label: '表达', value: t.aiExpression },
+    { label: '专业', value: t.aiProfessional },
+    { label: '逻辑', value: t.aiLogic },
+    { label: '应变', value: t.aiAdaptability }
+  ]
+}
+
+const turnTotal = computed(() => totalOf(turn.value))
+const turnScores = computed(() => scoresOf(turn.value))
+
+// 回看上一题：只读浏览已作答轮次，不调用 heartbeat，不会重置超时提醒的计时
+const answeredTurns = ref([])
+const reviewIndex = ref(null)
+const reviewTurn = computed(() =>
+  reviewIndex.value == null ? null : answeredTurns.value[reviewIndex.value] || null
+)
+const canPrevious = computed(() => {
+  if (!session.value || session.value.status !== 'ongoing' || !turn.value) return false
+  return turn.value.roundIndex > 1
 })
+
+async function openReview() {
+  if (!session.value) return
+  const data = await listInterviewTurns(session.value.id)
+  if (data.code !== 200) {
+    message.value = data.message || '加载历史作答失败'
+    return
+  }
+  const currentRound = turn.value ? turn.value.roundIndex : Number.MAX_SAFE_INTEGER
+  answeredTurns.value = (data.data || []).filter(
+    (item) => item.studentAnswer && item.roundIndex < currentRound
+  )
+  if (!answeredTurns.value.length) {
+    message.value = '还没有可回看的上一题'
+    return
+  }
+  message.value = ''
+  reviewIndex.value = answeredTurns.value.length - 1
+}
+
+function stepReview(step) {
+  const base = reviewIndex.value == null ? 0 : reviewIndex.value
+  const next = base + step
+  if (next >= 0 && next < answeredTurns.value.length) reviewIndex.value = next
+}
+
+function exitReview() {
+  reviewIndex.value = null
+}
 
 const scoreRows = computed(() => {
   if (!report.value || !report.value.score) return []
@@ -196,16 +249,6 @@ const scoreRows = computed(() => {
     { label: '逻辑思维', value: s.logic },
     { label: '英语能力', value: s.english },
     { label: '应变能力', value: s.adaptability }
-  ]
-})
-
-const turnScores = computed(() => {
-  if (!turn.value) return []
-  return [
-    { label: '表达', value: turn.value.aiExpression },
-    { label: '专业', value: turn.value.aiProfessional },
-    { label: '逻辑', value: turn.value.aiLogic },
-    { label: '应变', value: turn.value.aiAdaptability }
   ]
 })
 
@@ -241,6 +284,8 @@ async function beginInterview() {
 
 async function loadQuestion() {
   if (!session.value) return
+  reviewIndex.value = null
+  answeredTurns.value = []
   const data = await getCurrentQuestion(session.value.id)
   if (data.code === 200) {
     turn.value = data.data
@@ -337,6 +382,8 @@ function resetInterview() {
   report.value = null
   answer.value = ''
   message.value = ''
+  reviewIndex.value = null
+  answeredTurns.value = []
 }
 
 async function loadHistory() {
@@ -489,8 +536,51 @@ function switchSub(name) {
           <span class="tag">{{ difficultyText(session.difficulty) }}</span>
           <span v-if="session.pressureMode" class="tag danger">压力模式</span>
           <span class="rounds">第 {{ turn ? turn.roundIndex : session.currentRound }} / {{ session.totalRounds }} 轮</span>
+          <button
+            v-if="canPrevious && !reviewTurn"
+            class="ghost sm"
+            type="button"
+            @click="openReview"
+          >
+            上一题
+          </button>
         </div>
 
+        <!-- 回看上一题：只读浏览，不调用 heartbeat，不会重置超时提醒的计时 -->
+        <div v-if="reviewTurn" class="review-panel">
+          <div class="review-head">
+            <span class="review-title">回看第 {{ reviewTurn.roundIndex }} 轮</span>
+            <div class="review-nav">
+              <button class="ghost sm" type="button" :disabled="reviewIndex <= 0" @click="stepReview(-1)">
+                再上一题
+              </button>
+              <button
+                class="ghost sm"
+                type="button"
+                :disabled="reviewIndex >= answeredTurns.length - 1"
+                @click="stepReview(1)"
+              >
+                下一题
+              </button>
+              <button class="ghost sm" type="button" @click="exitReview">返回当前题目</button>
+            </div>
+          </div>
+          <p class="review-q">{{ reviewTurn.question }}</p>
+          <p class="fb-answer">{{ reviewTurn.studentAnswer }}</p>
+          <p v-if="totalOf(reviewTurn) != null" class="fb-total">
+            本题综合评分 <strong>{{ totalOf(reviewTurn) }}</strong> <span>/ 100</span>
+          </p>
+          <div class="scores">
+            <div v-for="s in scoresOf(reviewTurn)" :key="s.label" class="score-item">
+              <span>{{ s.label }}</span>
+              <strong>{{ scoreOf(s.value) }}</strong>
+              <em>/100</em>
+            </div>
+          </div>
+          <p class="fb-text">{{ reviewTurn.aiFeedback }}</p>
+        </div>
+
+        <template v-else>
         <div v-if="turn" class="question">
           <p class="q-label">
             面试官提问
@@ -542,6 +632,7 @@ function switchSub(name) {
             <button class="primary" type="button" :disabled="busy" @click="endInterview">结束并生成报告</button>
           </template>
         </div>
+        </template>
       </div>
 
       <!-- 已结束：报告 -->
@@ -749,6 +840,14 @@ function switchSub(name) {
   padding: 9px 16px; border: 1px solid #dde4ee; border-radius: 8px;
   background: #fff; color: #1c4fb8; font-size: 13px; cursor: pointer;
 }
+.ghost.sm { padding: 5px 10px; font-size: 12px; }
+.review-panel {
+  padding: 14px 16px; border: 1px solid #dbe6fb; border-radius: 12px; background: #f7faff;
+}
+.review-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.review-title { font-size: 12px; color: #1c4fb8; }
+.review-nav { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.review-q { margin: 0 0 10px; font-size: 14px; line-height: 1.7; color: #16233a; }
 .session-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .tag { padding: 2px 10px; border-radius: 999px; background: #e8f0ff; color: #1c4fb8; font-size: 12px; }
 .tag.danger { background: #fef3f2; color: #b42318; }

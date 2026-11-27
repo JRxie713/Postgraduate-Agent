@@ -15,6 +15,9 @@ export const interviewReminders = (userId) =>
 
 export const getCurrentQuestion = (id) => request(`/interview/sessions/${id}/question`)
 
+// 已作答的历史轮次（回看上一题评价）
+export const listInterviewTurns = (id) => request(`/interview/sessions/${id}/turns`)
+
 export const submitInterviewAnswer = (id, payload) =>
   request(`/interview/sessions/${id}/answers`, { method: 'POST', body: payload })
 

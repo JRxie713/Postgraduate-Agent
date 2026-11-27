@@ -79,6 +79,12 @@ public class InterviewController {
         return Result.success(interviewService.getCurrentQuestion(id));
     }
 
+    /** 已作答的历史轮次（回看上一题的评价） */
+    @GetMapping("/sessions/{id}/turns")
+    public Result<List<InterviewTurnVO>> listAnsweredTurns(@PathVariable Integer id) {
+        return Result.success(interviewService.listAnsweredTurns(id));
+    }
+
     /** 提交本轮回答（返回 AI 点评与评分） */
     @PostMapping("/sessions/{id}/answers")
     public Result<InterviewTurnVO> submitAnswer(@PathVariable Integer id,
