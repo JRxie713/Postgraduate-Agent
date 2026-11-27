@@ -84,7 +84,7 @@ async function checkCurrentSession() {
   reminders.value = reminders.value.filter((item) => item.sessionId !== abandonedId)
   resetInterview()
   subTab.value = 'train'
-  message.value = '该场面试超过设定时间未作答，已自动放弃，请重新选择方向与难度'
+  message.value = '该场面试已自动放弃（长时间未作答或超过单场最长时长），请重新选择方向与难度'
   await loadHistory()
 }
 

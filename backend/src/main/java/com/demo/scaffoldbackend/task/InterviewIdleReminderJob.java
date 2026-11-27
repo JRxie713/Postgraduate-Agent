@@ -46,6 +46,14 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
     @Value("${interview.reminder.abandon-minutes:30}")
     private int abandonMinutes;
 
+    /**
+     * 单场面试最长时长(分钟)，默认 60。
+     * 防止用户一直保留输入内容（打字会刷新活跃时间）却始终不提交，让会话长期挂着；
+     * 超过该时长无论是否在作答都自动放弃。
+     */
+    @Value("${interview.reminder.max-session-minutes:60}")
+    private int maxSessionMinutes;
+
     @Override
     protected void executeInternal(JobExecutionContext context) {
         LocalDateTime now = LocalDateTime.now();
@@ -73,12 +81,16 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
                 idleMinutes, idle.size(), idleMinutes, detail, unreadReports);
     }
 
-    /** 长期未作答的会话自动置为 abandoned，避免旧会话反复提醒 */
+    /** 长期未作答、或单场超过最长时长的会话自动置为 abandoned，避免旧会话反复提醒 */
     private void autoAbandonExpired(LocalDateTime now) {
-        LocalDateTime expireBefore = now.minusMinutes(abandonMinutes);
+        LocalDateTime idleExpireBefore = now.minusMinutes(abandonMinutes);
+        LocalDateTime sessionDeadline = now.minusMinutes(maxSessionMinutes);
+        // 两个条件任一满足都放弃：闲置超时，或从开始到现在超过单场最长时长
         List<InterviewSession> expired = sessionMapper.selectList(Wrappers.<InterviewSession>lambdaQuery()
                 .eq(InterviewSession::getStatus, "ongoing")
-                .lt(InterviewSession::getUpdateTime, expireBefore));
+                .and(w -> w.lt(InterviewSession::getUpdateTime, idleExpireBefore)
+                        .or()
+                        .lt(InterviewSession::getCreateTime, sessionDeadline)));
         if (expired.isEmpty()) {
             return;
         }
@@ -87,8 +99,8 @@ public class InterviewIdleReminderJob extends QuartzJobBean {
             session.setUpdateTime(now);
             sessionMapper.updateById(session);
         }
-        log.info("[面试自动放弃] {} 场面试超过 {} 分钟未作答，已标记为放弃：{}",
-                expired.size(), abandonMinutes,
+        log.info("[面试自动放弃] {} 场面试超过 {} 分钟未作答或单场超过 {} 分钟，已标记为放弃：{}",
+                expired.size(), abandonMinutes, maxSessionMinutes,
                 expired.stream().map(InterviewSession::getId).toList());
     }
 }
