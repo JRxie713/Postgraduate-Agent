@@ -107,10 +107,16 @@ public class InterviewController {
         return Result.success(interviewService.getReport(id));
     }
 
-    /** 自我介绍批改（中英文自适应） */
+    /** 自我介绍批改（中英文自适应，传 userId 时保存批改记录） */
     @PostMapping("/english-introduction/review")
     public Result<EnglishReviewVO> reviewEnglish(@Valid @RequestBody EnglishReviewDTO dto) {
-        return Result.success(interviewService.reviewEnglish(dto.getIntroduction()));
+        return Result.success(interviewService.reviewEnglish(dto.getUserId(), dto.getIntroduction()));
+    }
+
+    /** 自我介绍批改历史 */
+    @GetMapping("/english-introductions")
+    public Result<List<EnglishReviewVO>> listEnglishReviews(@RequestParam Integer userId) {
+        return Result.success(interviewService.listEnglishReviews(userId));
     }
 
     // ==================== 历史训练记录（旧表 interview_record） ====================

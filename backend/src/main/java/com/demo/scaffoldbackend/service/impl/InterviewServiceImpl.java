@@ -5,10 +5,12 @@ import com.demo.scaffoldbackend.common.exception.BusinessException;
 import com.demo.scaffoldbackend.dto.AnswerInterviewDTO;
 import com.demo.scaffoldbackend.dto.CreateInterviewSessionDTO;
 import com.demo.scaffoldbackend.dto.FollowUpDTO;
+import com.demo.scaffoldbackend.entity.InterviewEnglishReview;
 import com.demo.scaffoldbackend.entity.InterviewQuestionBank;
 import com.demo.scaffoldbackend.entity.InterviewReport;
 import com.demo.scaffoldbackend.entity.InterviewSession;
 import com.demo.scaffoldbackend.entity.InterviewTurn;
+import com.demo.scaffoldbackend.mapper.InterviewEnglishReviewMapper;
 import com.demo.scaffoldbackend.mapper.InterviewQuestionBankMapper;
 import com.demo.scaffoldbackend.mapper.InterviewReportMapper;
 import com.demo.scaffoldbackend.mapper.InterviewSessionMapper;
@@ -71,6 +73,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final InterviewTurnMapper turnMapper;
     private final InterviewReportMapper reportMapper;
     private final InterviewQuestionBankMapper questionMapper;
+    private final InterviewEnglishReviewMapper englishReviewMapper;
     private final AiChatClient aiChatClient;
 
     /** 超时提醒阈值（分钟），与 Quartz 任务共用同一个配置项 */
@@ -354,7 +357,7 @@ public class InterviewServiceImpl implements InterviewService {
     // ==================== 自我介绍批改（中英文自适应） ====================
 
     @Override
-    public EnglishReviewVO reviewEnglish(String introduction) {
+    public EnglishReviewVO reviewEnglish(Integer userId, String introduction) {
         String text = introduction == null ? "" : introduction.trim();
         if (text.isEmpty()) {
             throw new BusinessException(400, "自我介绍内容不能为空");
@@ -362,23 +365,26 @@ public class InterviewServiceImpl implements InterviewService {
         boolean chinese = isChinese(text);
 
         String system = chinese
-                ? "你是一位考研复试中文面试考官，请批改学生的中文自我介绍。"
-                + "只输出 JSON，不要任何多余文字。"
-                : "你是一位考研复试英语面试考官，请批改学生的英文自我介绍。"
-                + "只输出 JSON，不要任何多余文字。";
+                ? "你是一位考研复试中文面试考官，请批改学生的中文自我介绍。只输出 JSON，不要任何多余文字。"
+                : "你是一位考研复试英语面试考官，请批改学生的英文自我介绍。只输出 JSON，不要任何多余文字。";
         String user = "学生自我介绍如下：\n" + text + "\n\n"
                 + "请严格输出 JSON：{\"vocabulary\":0-100的整数,\"grammar\":0-100的整数,"
                 + "\"structure\":0-100的整数,\"overallComment\":\"总体评价（中文，80字以内）\","
                 + "\"suggestions\":[\"具体改进建议1\",\"建议2\",\"建议3\"],"
-                + "\"grammarMistakes\":[\"原句 -> 建议改写\"]}"
+                + "\"grammarMistakes\":[\"原句：... ｜ 问题：... ｜ 建议：...\"]}\n"
+                + "批改要求：\n"
+                + "1. grammarMistakes 只列真正影响准确、地道或逻辑的问题，最多 5 条，每条必须写清问题原因和改写后的表达；\n"
+                + "2. 仅大小写、空格、标点形式这类没有实质区别的改动不要列出；没有值得修改的地方就返回空数组；\n"
+                + "3. suggestions 要具体可执行（补哪部分内容、换哪种句式等），不要空泛套话；\n"
+                + "4. 三个维度要拉开区分度，不要都挤在 70-80 分。"
                 + (chinese
-                ? "\n说明：vocabulary 指用词与表达丰富度，grammar 指语法与表达规范，structure 指逻辑结构；"
-                + "grammarMistakes 用中文指出问题并给出改写。"
+                ? "\n说明：vocabulary 指用词与表达丰富度，grammar 指语法与表达规范，structure 指逻辑结构；所有解释用中文。"
                 : "");
 
         JsonNode node = aiChatClient.parseJson(aiChatClient.chat(system, user));
+        EnglishReviewVO vo;
         if (node != null && node.has("vocabulary")) {
-            EnglishReviewVO vo = new EnglishReviewVO();
+            vo = new EnglishReviewVO();
             vo.setVocabularyScore(clamp(node.path("vocabulary").asDouble(70)));
             vo.setGrammarScore(clamp(node.path("grammar").asDouble(70)));
             vo.setStructureScore(clamp(node.path("structure").asDouble(70)));
@@ -389,9 +395,71 @@ public class InterviewServiceImpl implements InterviewService {
             vo.setSuggestions(readStringList(node.path("suggestions")));
             vo.setGrammarMistakes(readStringList(node.path("grammarMistakes")));
             vo.setRuleBased(0);
+        } else {
+            vo = ruleBasedEnglishReview(text);
+        }
+        return saveEnglishReview(userId, text, chinese ? "zh" : "en", vo);
+    }
+
+    @Override
+    public List<EnglishReviewVO> listEnglishReviews(Integer userId) {
+        if (userId == null) {
+            throw new BusinessException(400, "userId 不能为空");
+        }
+        return englishReviewMapper.selectList(Wrappers.<InterviewEnglishReview>lambdaQuery()
+                        .eq(InterviewEnglishReview::getUserId, userId)
+                        .orderByDesc(InterviewEnglishReview::getCreateTime))
+                .stream().map(this::toEnglishReviewVO).collect(Collectors.toList());
+    }
+
+    /** 保存批改记录：userId 为空时只回显不落库 */
+    private EnglishReviewVO saveEnglishReview(Integer userId, String text, String language,
+                                              EnglishReviewVO vo) {
+        vo.setLanguage(language);
+        vo.setIntroduction(text);
+        if (userId == null) {
             return vo;
         }
-        return ruleBasedEnglishReview(text);
+        InterviewEnglishReview record = new InterviewEnglishReview();
+        record.setUserId(userId);
+        record.setLanguage(language);
+        record.setIntroduction(text);
+        record.setVocabularyScore(vo.getVocabularyScore());
+        record.setGrammarScore(vo.getGrammarScore());
+        record.setStructureScore(vo.getStructureScore());
+        record.setTotalScore(vo.getTotalScore());
+        record.setOverallComment(vo.getOverallComment());
+        record.setSuggestions(joinJson(vo.getSuggestions()));
+        record.setGrammarMistakes(joinJson(vo.getGrammarMistakes()));
+        record.setRuleBased(vo.getRuleBased());
+        record.setCreateTime(LocalDateTime.now());
+        try {
+            englishReviewMapper.insert(record);
+            vo.setId(record.getId());
+            vo.setCreateTime(record.getCreateTime());
+        } catch (Exception e) {
+            // 建表语句未执行时不阻断批改本身，只影响历史记录
+            log.warn("[自我介绍批改] 保存批改记录失败（请确认已执行 interview_english_review 建表语句）：{}",
+                    e.getMessage());
+        }
+        return vo;
+    }
+
+    private EnglishReviewVO toEnglishReviewVO(InterviewEnglishReview r) {
+        EnglishReviewVO vo = new EnglishReviewVO();
+        vo.setId(r.getId());
+        vo.setLanguage(r.getLanguage());
+        vo.setIntroduction(r.getIntroduction());
+        vo.setVocabularyScore(r.getVocabularyScore());
+        vo.setGrammarScore(r.getGrammarScore());
+        vo.setStructureScore(r.getStructureScore());
+        vo.setTotalScore(r.getTotalScore());
+        vo.setOverallComment(r.getOverallComment());
+        vo.setSuggestions(splitJson(r.getSuggestions()));
+        vo.setGrammarMistakes(splitJson(r.getGrammarMistakes()));
+        vo.setRuleBased(r.getRuleBased());
+        vo.setCreateTime(r.getCreateTime());
+        return vo;
     }
 
     /** 中文字符占比不低于字母数量时视为中文自我介绍 */

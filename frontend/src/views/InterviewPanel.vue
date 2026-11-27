@@ -9,6 +9,7 @@ import {
   getInterviewSession,
   heartbeatInterview,
   interviewReminders,
+  listEnglishReviews,
   listInterviewSessions,
   reviewEnglishIntro,
   startInterview,
@@ -49,6 +50,7 @@ const turn = ref(null)
 const answer = ref('')
 const report = ref(null)
 const history = ref([])
+const englishHistory = ref([])
 const historyLoading = ref(false)
 
 const englishText = ref('')
@@ -341,12 +343,24 @@ async function loadHistory() {
   if (!props.user || props.user.id == null) return
   historyLoading.value = true
   try {
-    const data = await listInterviewSessions(props.user.id)
-    history.value = data.code === 200 ? data.data || [] : []
-    if (data.code !== 200) message.value = data.message || '加载历史记录失败'
+    const [sessions, reviews] = await Promise.all([
+      listInterviewSessions(props.user.id),
+      listEnglishReviews(props.user.id)
+    ])
+    history.value = sessions.code === 200 ? sessions.data || [] : []
+    englishHistory.value = reviews.code === 200 ? reviews.data || [] : []
+    if (sessions.code !== 200) message.value = sessions.message || '加载历史记录失败'
   } finally {
     historyLoading.value = false
   }
+}
+
+// 点开一条自我介绍批改记录：回到批改页展示当时的评分与建议
+function openEnglishHistory(item) {
+  englishResult.value = item
+  englishText.value = item.introduction || ''
+  subTab.value = 'english'
+  message.value = ''
 }
 
 async function openHistory(item) {
@@ -380,7 +394,10 @@ async function submitEnglish() {
   busy.value = true
   message.value = ''
   try {
-    const data = await reviewEnglishIntro(englishText.value.trim())
+    const data = await reviewEnglishIntro(
+      englishText.value.trim(),
+      props.user && props.user.id != null ? props.user.id : null
+    )
     if (data.code === 200) {
       englishResult.value = data.data
     } else {
@@ -573,28 +590,48 @@ function switchSub(name) {
       </div>
     </template>
 
-    <!-- ===== 历史记录 ===== -->
+    <!-- ===== 历史记录：模拟面试 + 自我介绍批改 ===== -->
     <template v-else-if="subTab === 'history'">
       <p v-if="historyLoading" class="empty">加载中…</p>
-      <p v-else-if="!history.length" class="empty">还没有面试记录，先去「模拟面试」开一场吧</p>
-      <div v-else class="history">
-        <div v-for="item in history" :key="item.id" class="history-row">
-          <button class="h-open" type="button" @click="openHistory(item)">
-            <span class="h-main">{{ item.major }} · {{ typeText(item.trainingType) }}</span>
-            <span class="h-meta">{{ difficultyText(item.difficulty) }} · {{ statusText(item.status) }}</span>
-            <span class="h-score">{{ item.score == null ? '—' : scoreOf(item.score) + ' 分' }}</span>
-            <span class="h-time">{{ String(item.createTime || '').replace('T', ' ').slice(0, 16) }}</span>
-          </button>
-          <button
-            v-if="item.status === 'ongoing'"
-            class="h-abandon"
-            type="button"
-            @click="giveUp(item.id)"
-          >
-            放弃
-          </button>
+      <template v-else>
+        <div class="history-block">
+          <h4 class="history-title">模拟面试</h4>
+          <p v-if="!history.length" class="empty">还没有面试记录，先去「模拟面试」开一场吧</p>
+          <div v-else class="history">
+            <div v-for="item in history" :key="item.id" class="history-row">
+              <button class="h-open" type="button" @click="openHistory(item)">
+                <span class="h-main">{{ item.major }} · {{ typeText(item.trainingType) }}</span>
+                <span class="h-meta">{{ difficultyText(item.difficulty) }} · {{ statusText(item.status) }}</span>
+                <span class="h-score">{{ item.score == null ? '—' : scoreOf(item.score) + ' 分' }}</span>
+                <span class="h-time">{{ String(item.createTime || '').replace('T', ' ').slice(0, 16) }}</span>
+              </button>
+              <button
+                v-if="item.status === 'ongoing'"
+                class="h-abandon"
+                type="button"
+                @click="giveUp(item.id)"
+              >
+                放弃
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+
+        <div class="history-block">
+          <h4 class="history-title">自我介绍批改</h4>
+          <p v-if="!englishHistory.length" class="empty">还没有批改记录，去「自我介绍批改」提交一段试试</p>
+          <div v-else class="history">
+            <div v-for="item in englishHistory" :key="'e' + item.id" class="history-row">
+              <button class="h-open" type="button" @click="openEnglishHistory(item)">
+                <span class="h-main">{{ item.language === 'zh' ? '中文自我介绍' : '英文自我介绍' }}</span>
+                <span class="h-meta">{{ item.ruleBased ? '规则化点评' : '大模型点评' }}</span>
+                <span class="h-score">{{ scoreOf(item.totalScore) }} 分</span>
+                <span class="h-time">{{ String(item.createTime || '').replace('T', ' ').slice(0, 16) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
     </template>
 
     <!-- ===== 自我介绍批改（中英文自适应） ===== -->
@@ -771,8 +808,10 @@ function switchSub(name) {
 .report-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .report-cols h4 { margin: 0 0 8px; font-size: 13px; color: #16233a; }
 .report-cols ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
-.report-cols li { font-size: 13px; line-height: 1.7; color: #46526b; }
+.report-cols li { font-size: 13px; line-height: 1.7; color: #46526b; word-break: break-word; }
 .muted { color: #97a1b5; }
+.history-block { display: grid; gap: 10px; }
+.history-title { margin: 0; font-size: 14px; color: #16233a; }
 .history { display: grid; gap: 10px; }
 .history-row {
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;

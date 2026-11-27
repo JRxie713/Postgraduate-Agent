@@ -2,6 +2,7 @@ package com.demo.scaffoldbackend.vo;
 
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -9,6 +10,18 @@ import java.util.List;
  */
 @Data
 public class EnglishReviewVO {
+
+    /** 批改记录ID(仅保存后返回) */
+    private Integer id;
+
+    /** 语言: zh(中文)/en(英文) */
+    private String language;
+
+    /** 学生提交的自我介绍原文 */
+    private String introduction;
+
+    /** 批改时间 */
+    private LocalDateTime createTime;
 
     /** 综合评分(0-100) */
     private Double totalScore;

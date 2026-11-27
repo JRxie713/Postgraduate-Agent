@@ -110,8 +110,31 @@ CREATE TABLE interview_report (
 
 
 -- ------------------------------------------------------------
--- 5. 旧表增强: interview_record 补字段
---    (保留旧表做历史兼容, 新业务用上面 4 张表)
+-- 5. 自我介绍批改记录表 (每次批改留痕, 在"历史记录"中可回看)
+-- ------------------------------------------------------------
+DROP TABLE IF EXISTS interview_english_review;
+CREATE TABLE interview_english_review (
+    id                INT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    user_id           INT          NOT NULL COMMENT '用户ID',
+    language          VARCHAR(10)  NOT NULL DEFAULT 'en' COMMENT '语言: zh(中文)/en(英文)',
+    introduction      TEXT         NOT NULL COMMENT '学生提交的自我介绍原文',
+    vocabulary_score  DOUBLE       NOT NULL DEFAULT 0 COMMENT '语言表达/词汇丰富度(0-100)',
+    grammar_score     DOUBLE       NOT NULL DEFAULT 0 COMMENT '语法规范(0-100)',
+    structure_score   DOUBLE       NOT NULL DEFAULT 0 COMMENT '结构清晰度(0-100)',
+    total_score       DOUBLE       NOT NULL DEFAULT 0 COMMENT '加权总分(0-100)',
+    overall_comment   TEXT                  COMMENT '总体评价',
+    suggestions       TEXT                  COMMENT '改进建议(JSON数组或换行文本)',
+    grammar_mistakes  TEXT                  COMMENT '表达问题(JSON数组或换行文本)',
+    rule_based        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否规则化兜底(1=是)',
+    create_time       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '批改时间',
+    INDEX idx_user (user_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自我介绍批改记录';
+
+
+-- ------------------------------------------------------------
+-- 6. 旧表增强: interview_record 补字段
+--    (保留旧表做历史兼容, 新业务用上面 5 张表)
 -- ------------------------------------------------------------
 -- 执行前先判断列是否存在, 避免重复执行报错
 SET @dbname = DATABASE();

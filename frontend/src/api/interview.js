@@ -37,5 +37,12 @@ export const heartbeatInterview = (id) =>
 
 export const getInterviewReport = (id) => request(`/interview/sessions/${id}/report`)
 
-export const reviewEnglishIntro = (introduction) =>
-  request('/interview/english-introduction/review', { method: 'POST', body: { introduction } })
+export const reviewEnglishIntro = (introduction, userId) =>
+  request('/interview/english-introduction/review', {
+    method: 'POST',
+    body: { introduction, userId }
+  })
+
+// 自我介绍批改历史
+export const listEnglishReviews = (userId) =>
+  request(`/interview/english-introductions?userId=${encodeURIComponent(userId)}`)

@@ -52,6 +52,9 @@ public interface InterviewService {
     /** 查询已有报告 */
     FinalInterviewReportVO getReport(Integer sessionId);
 
-    /** 自我介绍批改（中英文自适应） */
-    EnglishReviewVO reviewEnglish(String introduction);
+    /** 自我介绍批改（中英文自适应），传 userId 时保存批改记录 */
+    EnglishReviewVO reviewEnglish(Integer userId, String introduction);
+
+    /** 查询某用户的自我介绍批改历史 */
+    List<EnglishReviewVO> listEnglishReviews(Integer userId);
 }
