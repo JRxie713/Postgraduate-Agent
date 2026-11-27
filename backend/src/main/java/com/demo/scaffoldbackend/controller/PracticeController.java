@@ -60,9 +60,16 @@ public class PracticeController {
                                                         @RequestParam(defaultValue = "10") Integer size,
                                                         @RequestParam(required = false) String examSubject,
                                                         @RequestParam(required = false) String knowledgePoint,
-                                                        @RequestParam(required = false) Boolean onlyWrong) {
+                                                        @RequestParam(required = false) Boolean onlyWrong,
+                                                        @RequestParam(required = false) Boolean today) {
         return Result.success(practiceService.pageRecords(currentUserId(), page, size,
-                examSubject, knowledgePoint, onlyWrong));
+                examSubject, knowledgePoint, onlyWrong, today));
+    }
+
+    /** 练习记录详情：完整题目 + 我的作答 + 解析（Redis 缓存） */
+    @GetMapping("/records/{id}")
+    public Result<com.demo.scaffoldbackend.vo.PracticeRecordDetailVO> recordDetail(@PathVariable Long id) {
+        return Result.success(practiceService.recordDetail(currentUserId(), id));
     }
 
     /** 练习概览：正确率、今日练习、错题与掌握情况 */

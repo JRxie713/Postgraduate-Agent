@@ -19,13 +19,17 @@ import com.demo.scaffoldbackend.service.PracticeService;
 import com.demo.scaffoldbackend.vo.PracticeAnswerResultVO;
 import com.demo.scaffoldbackend.vo.PracticeOptionsVO;
 import com.demo.scaffoldbackend.vo.PracticeQuestionVO;
+import com.demo.scaffoldbackend.vo.PracticeRecordDetailVO;
 import com.demo.scaffoldbackend.vo.PracticeRecordVO;
 import com.demo.scaffoldbackend.vo.PracticeSummaryVO;
 import com.demo.scaffoldbackend.vo.QuestionOptionVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -57,6 +61,8 @@ public class PracticeServiceImpl implements PracticeService {
     private final WrongQuestionMapper wrongQuestionMapper;
     private final PracticeRecordMapper practiceRecordMapper;
     private final PracticeQuestionSupport questionSupport;
+    private final StringRedisTemplate redis;
+    private final ObjectMapper objectMapper;
 
     @Override
     public PageResult<PracticeQuestionVO> pageQuestions(Integer userId, int page, int size, String examSubject,
@@ -173,13 +179,14 @@ public class PracticeServiceImpl implements PracticeService {
 
     @Override
     public PageResult<PracticeRecordVO> pageRecords(Integer userId, int page, int size, String examSubject,
-                                                    String knowledgePoint, Boolean onlyWrong) {
+                                                    String knowledgePoint, Boolean onlyWrong, Boolean today) {
         validatePage(page, size);
         LambdaQueryWrapper<PracticeRecord> wrapper = Wrappers.<PracticeRecord>lambdaQuery()
                 .eq(PracticeRecord::getUserId, userId)
                 .eq(hasText(examSubject), PracticeRecord::getExamSubject, trim(examSubject))
                 .eq(hasText(knowledgePoint), PracticeRecord::getKnowledgePoint, trim(knowledgePoint))
                 .eq(Boolean.TRUE.equals(onlyWrong), PracticeRecord::getIsCorrect, Boolean.FALSE)
+                .ge(Boolean.TRUE.equals(today), PracticeRecord::getAnswerTime, LocalDate.now().atStartOfDay())
                 .orderByDesc(PracticeRecord::getAnswerTime)
                 .orderByDesc(PracticeRecord::getId);
         Page<PracticeRecord> result = practiceRecordMapper.selectPage(Page.of(page, size), wrapper);
@@ -206,6 +213,53 @@ public class PracticeServiceImpl implements PracticeService {
             return vo;
         }).toList();
         return PageResult.of(result.getTotal(), page, size, records);
+    }
+
+    @Override
+    public PracticeRecordDetailVO recordDetail(Integer userId, Long id) {
+        String cacheKey = "practice:record:detail:" + userId + ":" + id;
+        try {
+            String cached = redis.opsForValue().get(cacheKey);
+            if (cached != null) {
+                return objectMapper.readValue(cached, PracticeRecordDetailVO.class);
+            }
+        } catch (Exception ignore) {
+            // 缓存异常不影响主流程，回源数据库
+        }
+
+        PracticeRecord record = practiceRecordMapper.selectById(id);
+        if (record == null) {
+            throw new BusinessException(404, "练习记录不存在");
+        }
+        if (!java.util.Objects.equals(record.getUserId(), userId)) {
+            throw new BusinessException(403, "无权查看他人的练习记录");
+        }
+        QuestionContent content = record.getContentId() == null ? null
+                : questionContentMapper.selectById(record.getContentId());
+
+        PracticeRecordDetailVO vo = new PracticeRecordDetailVO();
+        vo.setId(record.getId());
+        vo.setQuestionId(record.getQuestionId());
+        vo.setExamSubject(record.getExamSubject());
+        vo.setChapter(record.getChapter());
+        vo.setKnowledgePoint(record.getKnowledgePoint());
+        vo.setQType(record.getQType());
+        vo.setDifficulty(record.getDifficulty());
+        vo.setUserAnswer(record.getUserAnswer());
+        vo.setCorrectAnswer(record.getCorrectAnswer());
+        vo.setCorrect(record.getIsCorrect());
+        vo.setAnswerTime(record.getAnswerTime());
+        if (content != null) {
+            vo.setQuestionText(content.getQuestionText());
+            vo.setOptions(questionSupport.parseOptions(content.getOptionInfo()));
+            vo.setAnalysis(content.getAnalysis());
+        }
+        try {
+            redis.opsForValue().set(cacheKey, objectMapper.writeValueAsString(vo), Duration.ofMinutes(30));
+        } catch (Exception ignore) {
+            // Redis 不可用时仅降级为不走缓存
+        }
+        return vo;
     }
 
     @Override

@@ -5,6 +5,7 @@ import {
   practiceQuestions,
   practiceDaily,
   practiceRecords,
+  practiceRecordDetail,
   practiceSimilar,
   practiceSummary,
   submitPracticeAnswer,
@@ -204,10 +205,17 @@ async function removeWrong() {
 const recordPage = reactive({ page: 1, size: 10, total: 0 })
 const records = ref([])
 const onlyWrong = ref(false)
+const recordToday = ref(false)
 const recordLoading = ref(false)
+const recordDetail = ref(null)
 async function loadRecords() {
   recordLoading.value = true
-  const res = await practiceRecords({ page: recordPage.page, size: recordPage.size, onlyWrong: onlyWrong.value ? true : '' })
+  const res = await practiceRecords({
+    page: recordPage.page,
+    size: recordPage.size,
+    onlyWrong: onlyWrong.value ? true : '',
+    today: recordToday.value ? true : ''
+  })
   if (res.code === 200 && res.data) {
     records.value = res.data.records || []
     recordPage.total = res.data.total || 0
@@ -283,6 +291,29 @@ function quitDaily() {
   loadSummary()
 }
 
+async function openRecordDetail(item) {
+  recordDetail.value = { loading: true }
+  const res = await practiceRecordDetail(item.id)
+  if (res.code === 200) {
+    recordDetail.value = res.data
+  } else {
+    recordDetail.value = null
+    message.value = res.message || '加载题目详情失败'
+  }
+}
+// 顶部统计卡点击：跳到对应明细
+function goRecords({ wrong = false, today = false } = {}) {
+  onlyWrong.value = wrong
+  recordToday.value = today
+  recordPage.page = 1
+  switchTab('records')
+}
+function goWrong(mastery = '') {
+  Object.assign(wrongFilter, { examSubject: '', knowledgePoint: '', masteryLevel: mastery })
+  wrongPage.page = 1
+  switchTab('wrong')
+}
+
 function switchTab(next) {
   tab.value = next
   if (next === 'wrong') loadWrong()
@@ -293,6 +324,7 @@ function formatTime(value) {
 }
 function goSpecial(questionId) {
   wrongDetail.value = null
+  recordDetail.value = null
   current.value = null
   openSimilar(questionId)
 }
@@ -314,11 +346,11 @@ onMounted(() => {
         <p class="sub">练习 → 判题 → 自动收录错题 → 同知识点再练，形成完整训练闭环。</p>
       </div>
       <div class="hero-stats">
-        <div class="stat"><strong>{{ summary?.total ?? 0 }}</strong><span>累计练习</span></div>
-        <div class="stat"><strong>{{ summary?.accuracy ?? 0 }}%</strong><span>总正确率</span></div>
-        <div class="stat"><strong>{{ summary?.todayCount ?? 0 }}</strong><span>今日练习</span></div>
-        <div class="stat"><strong>{{ summary?.wrongTotal ?? 0 }}</strong><span>错题总数</span></div>
-        <div class="stat"><strong>{{ summary?.masteredCount ?? 0 }}</strong><span>已掌握</span></div>
+        <button class="stat" type="button" title="查看全部练习记录" @click="goRecords()"><strong>{{ summary?.total ?? 0 }}</strong><span>累计练习</span></button>
+        <button class="stat" type="button" title="查看答错记录" @click="goRecords({ wrong: true })"><strong>{{ summary?.accuracy ?? 0 }}%</strong><span>总正确率</span></button>
+        <button class="stat" type="button" title="查看今日练习记录" @click="goRecords({ today: true })"><strong>{{ summary?.todayCount ?? 0 }}</strong><span>今日练习</span></button>
+        <button class="stat" type="button" title="查看全部错题" @click="goWrong()"><strong>{{ summary?.wrongTotal ?? 0 }}</strong><span>错题总数</span></button>
+        <button class="stat" type="button" title="查看已掌握错题" @click="goWrong('MASTERED')"><strong>{{ summary?.masteredCount ?? 0 }}</strong><span>已掌握</span></button>
       </div>
     </header>
 
@@ -488,6 +520,10 @@ onMounted(() => {
             <input v-model="onlyWrong" type="checkbox" @change="recordPage.page = 1; loadRecords()" />
             <span>只看答错</span>
           </label>
+          <label class="check">
+            <input v-model="recordToday" type="checkbox" @change="recordPage.page = 1; loadRecords()" />
+            <span>只看今天</span>
+          </label>
           <button class="ghost" type="button" @click="loadRecords">刷新</button>
         </div>
         <p v-if="recordLoading" class="empty">加载中…</p>
@@ -496,7 +532,7 @@ onMounted(() => {
           <div class="record-row record-head">
             <span>题目</span><span>作答</span><span>结果</span><span>时间</span>
           </div>
-          <div v-for="r in records" :key="r.id" class="record-row">
+          <div v-for="r in records" :key="r.id" class="record-row clickable" title="点击查看题目详情" @click="openRecordDetail(r)">
             <span>
               <b>{{ r.questionText }}</b>
               <em>{{ r.examSubject }} · {{ r.knowledgePoint }} · {{ r.difficulty }}</em>
@@ -701,6 +737,44 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 练习记录题目详情弹窗 -->
+    <div v-if="recordDetail" class="overlay" @click.self="recordDetail = null">
+      <div class="modal">
+        <p v-if="recordDetail.loading" class="empty">加载题目详情…</p>
+        <template v-else>
+          <div class="tags">
+            <span class="tag subject">{{ recordDetail.examSubject }}</span>
+            <span class="tag">{{ recordDetail.chapter }}</span>
+            <span class="tag point">{{ recordDetail.knowledgePoint }}</span>
+            <span class="tag difficulty">{{ recordDetail.difficulty }}</span>
+            <span :class="['tag', recordDetail.correct ? 'mastery mastered' : 'wrong-tag']">{{ recordDetail.correct ? '答对' : '答错' }}</span>
+            <button class="close" type="button" @click="recordDetail = null">×</button>
+          </div>
+          <h2 class="modal-title">{{ recordDetail.questionText }}</h2>
+          <div class="option-list readonly">
+            <div
+              v-for="opt in recordDetail.options"
+              :key="opt.key"
+              :class="['option', { right: opt.key === recordDetail.correctAnswer, mine: opt.key === recordDetail.userAnswer && opt.key !== recordDetail.correctAnswer }]"
+            >
+              <span class="opt-key">{{ opt.key }}</span>
+              <span class="opt-text">{{ opt.text }}</span>
+            </div>
+          </div>
+          <p class="answer-line">我的答案：<b :class="recordDetail.correct ? 'ok' : 'fail'">{{ recordDetail.userAnswer }}</b>&nbsp;&nbsp;正确答案：<b class="ok">{{ recordDetail.correctAnswer }}</b></p>
+          <p class="meta">作答时间 {{ formatTime(recordDetail.answerTime) }}</p>
+          <div class="analysis">
+            <h4>解析</h4>
+            <p>{{ recordDetail.analysis || '暂无解析' }}</p>
+          </div>
+          <div class="result-actions">
+            <button class="primary" type="button" @click="goSpecial(recordDetail.questionId)">同知识点专项练习</button>
+            <button class="ghost" type="button" @click="recordDetail = null">关闭</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- 专项练习弹窗 -->
     <div v-if="special" class="overlay" @click.self="closeSimilar">
       <div class="modal">
@@ -733,7 +807,8 @@ onMounted(() => {
 .hero h1 { margin: 0; font-size: 24px; }
 .sub { margin: 8px 0 0; font-size: 13px; opacity: .85; }
 .hero-stats { display: flex; gap: 10px; flex-wrap: wrap; }
-.stat { min-width: 84px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, .12); text-align: center; }
+.stat { min-width: 84px; padding: 12px 14px; border: none; border-radius: 12px; background: rgba(255, 255, 255, .12); color: #fff; font: inherit; text-align: center; cursor: pointer; transition: background .2s; }
+.stat:hover { background: rgba(255, 255, 255, .25); }
 .stat strong { display: block; font-size: 22px; }
 .stat span { font-size: 12px; opacity: .8; }
 .tabs { display: flex; gap: 8px; margin: 20px 0 14px; }
@@ -784,6 +859,8 @@ onMounted(() => {
 .record-table { margin-top: 14px; background: #fff; border: 1px solid #e8edf5; border-radius: 12px; overflow: hidden; }
 .record-row { display: grid; grid-template-columns: 2.2fr 1fr 70px 1fr; gap: 12px; padding: 12px 16px; border-top: 1px solid #eef1f6; align-items: center; font-size: 13px; }
 .record-row:first-child { border-top: none; }
+.record-row.clickable { cursor: pointer; }
+.record-row.clickable:hover { background: #f5f9ff; }
 .record-head { background: #f7f9fc; font-size: 12px; color: #7a869a; }
 .record-row b { display: block; font-weight: 500; }
 .record-row em { display: block; font-style: normal; font-size: 12px; color: #7a869a; margin-top: 4px; }

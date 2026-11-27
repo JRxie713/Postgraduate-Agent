@@ -26,9 +26,12 @@ public interface PracticeService {
     /** 提交客观题答案并判题，答错自动收录错题 */
     PracticeAnswerResultVO submitAnswer(Integer userId, PracticeAnswerDTO dto);
 
-    /** 分页查询日常练习记录 */
+    /** 分页查询日常练习记录（可按是否只看错题、是否只看今天过滤） */
     PageResult<PracticeRecordVO> pageRecords(Integer userId, int page, int size, String examSubject,
-                                             String knowledgePoint, Boolean onlyWrong);
+                                             String knowledgePoint, Boolean onlyWrong, Boolean today);
+
+    /** 练习记录详情：完整题目 + 作答 + 解析，走 Redis 缓存 */
+    com.demo.scaffoldbackend.vo.PracticeRecordDetailVO recordDetail(Integer userId, Long id);
 
     /** 练习概览统计 */
     PracticeSummaryVO summary(Integer userId);

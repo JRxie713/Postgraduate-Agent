@@ -23,6 +23,8 @@ export const submitPracticeAnswer = (payload) =>
 
 export const practiceRecords = (params = {}) => request(`/practice/records${toQuery(params)}`)
 
+export const practiceRecordDetail = (id) => request(`/practice/records/${id}`)
+
 export const practiceSummary = () => request('/practice/summary')
 
 export const practiceSimilar = (questionId, limit = 5) =>
