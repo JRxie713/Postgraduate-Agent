@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * 英语自我介绍点评请求体
+ * 自我介绍点评请求体（中英文均可）
  */
 @Data
 public class EnglishReviewDTO {

@@ -351,7 +351,7 @@ public class InterviewServiceImpl implements InterviewService {
         return toReportVO(report);
     }
 
-    // ==================== 英语点评 ====================
+    // ==================== 自我介绍批改（中英文自适应） ====================
 
     @Override
     public EnglishReviewVO reviewEnglish(String introduction) {
@@ -359,14 +359,22 @@ public class InterviewServiceImpl implements InterviewService {
         if (text.isEmpty()) {
             throw new BusinessException(400, "自我介绍内容不能为空");
         }
+        boolean chinese = isChinese(text);
 
-        String system = "你是一位考研复试英语面试考官，请批改学生的英文自我介绍。"
+        String system = chinese
+                ? "你是一位考研复试中文面试考官，请批改学生的中文自我介绍。"
+                + "只输出 JSON，不要任何多余文字。"
+                : "你是一位考研复试英语面试考官，请批改学生的英文自我介绍。"
                 + "只输出 JSON，不要任何多余文字。";
         String user = "学生自我介绍如下：\n" + text + "\n\n"
                 + "请严格输出 JSON：{\"vocabulary\":0-100的整数,\"grammar\":0-100的整数,"
                 + "\"structure\":0-100的整数,\"overallComment\":\"总体评价（中文，80字以内）\","
                 + "\"suggestions\":[\"具体改进建议1\",\"建议2\",\"建议3\"],"
-                + "\"grammarMistakes\":[\"原句 -> 建议改写\"]}";
+                + "\"grammarMistakes\":[\"原句 -> 建议改写\"]}"
+                + (chinese
+                ? "\n说明：vocabulary 指用词与表达丰富度，grammar 指语法与表达规范，structure 指逻辑结构；"
+                + "grammarMistakes 用中文指出问题并给出改写。"
+                : "");
 
         JsonNode node = aiChatClient.parseJson(aiChatClient.chat(system, user));
         if (node != null && node.has("vocabulary")) {
@@ -384,6 +392,20 @@ public class InterviewServiceImpl implements InterviewService {
             return vo;
         }
         return ruleBasedEnglishReview(text);
+    }
+
+    /** 中文字符占比不低于字母数量时视为中文自我介绍 */
+    private boolean isChinese(String text) {
+        int cjk = 0;
+        int letters = 0;
+        for (char c : text.toCharArray()) {
+            if (c >= '\u4e00' && c <= '\u9fff') {
+                cjk++;
+            } else if (Character.isLetter(c)) {
+                letters++;
+            }
+        }
+        return cjk > 0 && cjk >= letters;
     }
 
     // ==================== 内部：出题 ====================
@@ -812,9 +834,12 @@ public class InterviewServiceImpl implements InterviewService {
         return list;
     }
 
-    // ==================== 内部：英语规则化兜底 ====================
+    // ==================== 内部：自我介绍规则化兜底 ====================
 
     private EnglishReviewVO ruleBasedEnglishReview(String text) {
+        if (isChinese(text)) {
+            return ruleBasedChineseReview(text);
+        }
         String[] sentences = text.split("[.!?]+");
         List<String> words = Arrays.stream(text.toLowerCase().split("[^a-zA-Z']+"))
                 .filter(w -> !w.isBlank()).collect(Collectors.toList());
@@ -880,6 +905,76 @@ public class InterviewServiceImpl implements InterviewService {
         }
         vo.setSuggestions(suggestions);
         vo.setGrammarMistakes(mistakes);
+        vo.setRuleBased(1);
+        return vo;
+    }
+
+    /** 中文自我介绍规则化兜底：用词、语句规范、逻辑结构三维度评分 */
+    private EnglishReviewVO ruleBasedChineseReview(String text) {
+        List<String> sentences = Arrays.stream(text.split("[。！？!?；;\\n]+"))
+                .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+        int sentenceCount = Math.max(1, sentences.size());
+        int charCount = (int) text.chars().filter(Character::isLetterOrDigit).count();
+
+        // 中文"用词丰富度"用相邻二字组合的重复率衡量：重复度越低，表达越丰富
+        String compact = text.replaceAll("[^\\u4e00-\\u9fff]", "");
+        int bigramTotal = Math.max(0, compact.length() - 1);
+        Set<String> bigrams = new LinkedHashSet<>();
+        for (int i = 0; i < bigramTotal; i++) {
+            bigrams.add(compact.substring(i, i + 2));
+        }
+        double diversity = bigramTotal == 0 ? 0 : (double) bigrams.size() / bigramTotal;
+
+        double vocabulary = clamp(55 + diversity * 45);
+        double grammar = 80;
+        double structure = 68;
+
+        List<String> problems = new ArrayList<>();
+        if (text.contains("  ")) {
+            problems.add("存在连续空格，注意排版规范");
+            grammar -= 3;
+        }
+        if (!text.trim().matches("(?s).*[。！？!?]$")) {
+            problems.add("结尾缺少句号，注意完整收束");
+            grammar -= 3;
+        }
+        if (charCount < 80) {
+            problems.add("篇幅偏短，建议补充个人经历细节");
+            structure -= 10;
+        }
+
+        Set<String> structureWords = new LinkedHashSet<>(Arrays.asList(
+                "首先", "其次", "然后", "最后", "此外", "另外", "因此", "总之", "综上", "一方面", "另一方面"));
+        long structureHits = structureWords.stream().filter(text::contains).count();
+        structure += Math.min(20, structureHits * 6);
+        if (sentences.size() < 3) {
+            structure -= 6;
+        }
+
+        EnglishReviewVO vo = new EnglishReviewVO();
+        vo.setVocabularyScore(round1(clamp(vocabulary)));
+        vo.setGrammarScore(round1(clamp(grammar)));
+        vo.setStructureScore(round1(clamp(structure)));
+        vo.setTotalScore(round1(vo.getVocabularyScore() * 0.35
+                + vo.getGrammarScore() * 0.35 + vo.getStructureScore() * 0.30));
+        vo.setOverallComment("【规则化点评】共 " + charCount + " 字、" + sentenceCount + " 句，"
+                + "用词重复度 " + Math.round((1 - diversity) * 100) + "%。"
+                + (charCount < 150 ? "篇幅偏短，建议补充科研经历与报考动机。" : "篇幅合理。"));
+        List<String> suggestions = new ArrayList<>();
+        if (charCount < 150) {
+            suggestions.add("扩写到 200-300 字，覆盖教育背景、科研/实践经历、报考动机三部分");
+        }
+        if (structureHits == 0) {
+            suggestions.add("用“首先 / 其次 / 最后”等衔接词让结构更清晰");
+        }
+        if (diversity < 0.6) {
+            suggestions.add("减少重复表述，多用具体事例替代笼统评价");
+        }
+        if (suggestions.isEmpty()) {
+            suggestions.add("整体表达不错，建议配合模拟追问练习临场表达");
+        }
+        vo.setSuggestions(suggestions);
+        vo.setGrammarMistakes(problems);
         vo.setRuleBased(1);
         return vo;
     }

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   abandonInterview,
   finishInterview,
@@ -148,6 +148,33 @@ const showReminders = computed(
     !answered.value &&
     !answer.value.trim()
 )
+
+// 输入框被清空时重新计时：先撤下提醒并刷新后端活跃时间，等再次闲置到设定时长才会重新提醒
+async function restartIdleCountdown() {
+  if (!session.value || session.value.status !== 'ongoing') return
+  reminders.value = reminders.value.filter((row) => row.sessionId !== session.value.id)
+  await heartbeatInterview(session.value.id)
+}
+
+// 打字过程中节流刷新活跃时间，避免"写了很久"被判成超时未作答
+let typingAt = 0
+async function touchTyping() {
+  if (!session.value || session.value.status !== 'ongoing') return
+  const now = Date.now()
+  if (now - typingAt < 20000) return
+  typingAt = now
+  await heartbeatInterview(session.value.id)
+}
+
+watch(answer, (val, old) => {
+  if (!session.value || session.value.status !== 'ongoing' || !turn.value || answered.value) return
+  if (!val.trim()) {
+    // 只有"原本有字 → 被清空"才重新计时；下一题等程序化重置不触发
+    if (old && old.trim()) restartIdleCountdown()
+    return
+  }
+  touchTyping()
+})
 
 // 单题综合分（与报告同权重换算到 100 分制）
 const turnTotal = computed(() => {
@@ -347,7 +374,7 @@ async function openHistory(item) {
 
 async function submitEnglish() {
   if (!englishText.value.trim()) {
-    message.value = '请先输入英文自我介绍'
+    message.value = '请先输入自我介绍'
     return
   }
   busy.value = true
@@ -381,7 +408,7 @@ function switchSub(name) {
     <div class="chips">
       <button :class="['chip', { active: subTab === 'train' }]" type="button" @click="switchSub('train')">模拟面试</button>
       <button :class="['chip', { active: subTab === 'history' }]" type="button" @click="switchSub('history')">历史记录</button>
-      <button :class="['chip', { active: subTab === 'english' }]" type="button" @click="switchSub('english')">英语批改</button>
+      <button :class="['chip', { active: subTab === 'english' }]" type="button" @click="switchSub('english')">自我介绍批改</button>
     </div>
 
     <p v-if="message" class="message">{{ message }}</p>
@@ -514,8 +541,8 @@ function switchSub(name) {
               </p>
             </div>
             <div class="total">
-              <strong>{{ scoreOf(report.totalScore) }}</strong>
-              <span>总分</span>
+              <strong>{{ scoreOf(report.totalScore) }}<em>分</em></strong>
+              <span>总分 · 满分 100</span>
             </div>
           </div>
 
@@ -523,7 +550,7 @@ function switchSub(name) {
             <div v-for="row in scoreRows" :key="row.label" class="dim">
               <span class="dim-label">{{ row.label }}</span>
               <div class="bar"><div class="bar-in" :style="{ width: (row.value || 0) + '%' }"></div></div>
-              <span class="dim-value">{{ scoreOf(row.value) }}</span>
+              <span class="dim-value">{{ scoreOf(row.value) }} / 100</span>
             </div>
           </div>
 
@@ -555,7 +582,7 @@ function switchSub(name) {
           <button class="h-open" type="button" @click="openHistory(item)">
             <span class="h-main">{{ item.major }} · {{ typeText(item.trainingType) }}</span>
             <span class="h-meta">{{ difficultyText(item.difficulty) }} · {{ statusText(item.status) }}</span>
-            <span class="h-score">{{ item.score == null ? '—' : scoreOf(item.score) }}</span>
+            <span class="h-score">{{ item.score == null ? '—' : scoreOf(item.score) + ' 分' }}</span>
             <span class="h-time">{{ String(item.createTime || '').replace('T', ' ').slice(0, 16) }}</span>
           </button>
           <button
@@ -570,15 +597,15 @@ function switchSub(name) {
       </div>
     </template>
 
-    <!-- ===== 英语批改 ===== -->
+    <!-- ===== 自我介绍批改（中英文自适应） ===== -->
     <template v-else>
       <div class="card">
-        <label class="block-label">英文自我介绍（120-150 词效果最佳）</label>
+        <label class="block-label">自我介绍（中文约 200-300 字 / 英文约 120-150 词效果最佳，中英文均可）</label>
         <textarea
           v-model="englishText"
           class="answer"
           rows="8"
-          placeholder="Good morning professors. I am ..."
+          placeholder="支持中文或英文，例如：各位老师好，我是…… / Good morning professors. I am ..."
         ></textarea>
         <div class="actions">
           <button class="primary" type="button" :disabled="busy" @click="submitEnglish">
@@ -598,26 +625,26 @@ function switchSub(name) {
             </p>
           </div>
           <div class="total">
-            <strong>{{ scoreOf(englishResult.totalScore) }}</strong>
-            <span>总分</span>
+            <strong>{{ scoreOf(englishResult.totalScore) }}<em>分</em></strong>
+            <span>总分 · 满分 100</span>
           </div>
         </div>
 
         <div class="dims">
           <div class="dim">
-            <span class="dim-label">词汇丰富度</span>
+            <span class="dim-label">语言表达</span>
             <div class="bar"><div class="bar-in" :style="{ width: (englishResult.vocabularyScore || 0) + '%' }"></div></div>
-            <span class="dim-value">{{ scoreOf(englishResult.vocabularyScore) }}</span>
+            <span class="dim-value">{{ scoreOf(englishResult.vocabularyScore) }} / 100</span>
           </div>
           <div class="dim">
-            <span class="dim-label">语法准确度</span>
+            <span class="dim-label">语法规范</span>
             <div class="bar"><div class="bar-in" :style="{ width: (englishResult.grammarScore || 0) + '%' }"></div></div>
-            <span class="dim-value">{{ scoreOf(englishResult.grammarScore) }}</span>
+            <span class="dim-value">{{ scoreOf(englishResult.grammarScore) }} / 100</span>
           </div>
           <div class="dim">
             <span class="dim-label">结构清晰度</span>
             <div class="bar"><div class="bar-in" :style="{ width: (englishResult.structureScore || 0) + '%' }"></div></div>
-            <span class="dim-value">{{ scoreOf(englishResult.structureScore) }}</span>
+            <span class="dim-value">{{ scoreOf(englishResult.structureScore) }} / 100</span>
           </div>
         </div>
 
@@ -625,7 +652,7 @@ function switchSub(name) {
 
         <div class="report-cols">
           <div>
-            <h4>语法 / 用词问题</h4>
+            <h4>表达问题</h4>
             <ul>
               <li v-for="(item, i) in englishResult.grammarMistakes || []" :key="'g' + i">{{ item }}</li>
               <li v-if="!(englishResult.grammarMistakes || []).length" class="muted">未发现明显问题</li>
@@ -729,9 +756,10 @@ function switchSub(name) {
 .report-sub { margin: 0; font-size: 12px; color: #7a869a; }
 .total { text-align: right; }
 .total strong { display: block; font-size: 30px; color: #2f6fe4; line-height: 1; }
+.total strong em { font-style: normal; font-size: 14px; margin-left: 3px; }
 .total span { font-size: 12px; color: #7a869a; }
 .dims { display: grid; gap: 10px; margin: 18px 0; }
-.dim { display: grid; grid-template-columns: 70px 1fr 46px; align-items: center; gap: 12px; }
+.dim { display: grid; grid-template-columns: 70px 1fr 74px; align-items: center; gap: 12px; }
 .dim-label { font-size: 12px; color: #5a6b85; }
 .bar { height: 8px; background: #eef1f6; border-radius: 999px; overflow: hidden; }
 .bar-in { height: 100%; background: linear-gradient(90deg, #4c8bf5, #2f6fe4); }

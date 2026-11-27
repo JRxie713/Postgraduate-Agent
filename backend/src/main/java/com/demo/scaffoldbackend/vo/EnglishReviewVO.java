@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 英语自我介绍点评结果
+ * 中英文自我介绍点评结果
  */
 @Data
 public class EnglishReviewVO {

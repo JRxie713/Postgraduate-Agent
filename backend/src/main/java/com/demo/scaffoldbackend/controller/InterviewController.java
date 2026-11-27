@@ -107,7 +107,7 @@ public class InterviewController {
         return Result.success(interviewService.getReport(id));
     }
 
-    /** 英语自我介绍批改 */
+    /** 自我介绍批改（中英文自适应） */
     @PostMapping("/english-introduction/review")
     public Result<EnglishReviewVO> reviewEnglish(@Valid @RequestBody EnglishReviewDTO dto) {
         return Result.success(interviewService.reviewEnglish(dto.getIntroduction()));
