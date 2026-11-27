@@ -7,6 +7,7 @@ import {
   getCurrentQuestion,
   getInterviewReport,
   getInterviewSession,
+  heartbeatInterview,
   interviewReminders,
   listInterviewSessions,
   reviewEnglishIntro,
@@ -94,6 +95,9 @@ onUnmounted(() => {
 })
 
 async function resumeReminder(item) {
+  // 先刷新后端活跃时间，让"闲置分钟数"从 0 重新计算
+  await heartbeatInterview(item.sessionId)
+  reminders.value = reminders.value.filter((row) => row.sessionId !== item.sessionId)
   await openHistory({ id: item.sessionId, status: 'ongoing' })
   await pollReminders()
 }
@@ -128,6 +132,26 @@ const difficultyText = (value) => {
 const statusText = (value) => ({ ongoing: '进行中', finished: '已结束', abandoned: '已放弃' }[value] || value || '—')
 const scoreOf = (value) => (value == null ? '—' : Math.round(value * 10) / 10)
 const answered = computed(() => !!turn.value && !!turn.value.studentAnswer)
+
+// 超时提醒只在"正在作答"界面显示：查看历史评分、报告页都不打扰
+const showReminders = computed(
+  () =>
+    reminders.value.length > 0 &&
+    subTab.value === 'train' &&
+    !!session.value &&
+    session.value.status === 'ongoing' &&
+    !!turn.value &&
+    !answered.value
+)
+
+// 单题综合分（与报告同权重换算到 100 分制）
+const turnTotal = computed(() => {
+  const t = turn.value
+  if (!t || t.aiExpression == null) return null
+  const weighted =
+    (t.aiExpression * 0.2 + t.aiProfessional * 0.3 + t.aiLogic * 0.2 + t.aiAdaptability * 0.15) / 0.85
+  return Math.round(weighted * 10) / 10
+})
 
 const scoreRows = computed(() => {
   if (!report.value || !report.value.score) return []
@@ -358,7 +382,7 @@ function switchSub(name) {
     <p v-if="message" class="message">{{ message }}</p>
 
     <!-- 超时未作答提醒（后端 Quartz 任务扫描结果） -->
-    <div v-if="reminders.length" class="reminder">
+    <div v-if="showReminders" class="reminder">
       <p v-for="item in reminders" :key="item.sessionId" class="reminder-row">
         <span class="reminder-text">{{ item.message }}</span>
         <button class="reminder-btn" type="button" @click="resumeReminder(item)">继续作答</button>
@@ -443,10 +467,15 @@ function switchSub(name) {
             </span>
           </div>
           <p class="fb-answer">{{ turn.studentAnswer }}</p>
+          <p v-if="turnTotal != null" class="fb-total">
+            本题综合评分 <strong>{{ turnTotal }}</strong> <span>/ 100</span>
+            <em>（下方四项为分维度得分，满分均为 100）</em>
+          </p>
           <div class="scores">
             <div v-for="s in turnScores" :key="s.label" class="score-item">
               <span>{{ s.label }}</span>
               <strong>{{ scoreOf(s.value) }}</strong>
+              <em>/100</em>
             </div>
           </div>
           <p class="fb-text">{{ turn.aiFeedback }}</p>
@@ -678,12 +707,16 @@ function switchSub(name) {
 .fb-head { display: flex; justify-content: space-between; font-size: 12px; color: #7a869a; }
 .fb-answer { margin: 8px 0 12px; font-size: 13px; color: #46526b; line-height: 1.7; white-space: pre-wrap; }
 .scores { display: flex; gap: 10px; flex-wrap: wrap; }
+.fb-total { margin: 0 0 10px; font-size: 13px; color: #46526b; }
+.fb-total strong { font-size: 18px; color: #2f6fe4; }
+.fb-total em { font-style: normal; font-size: 11px; color: #8a94a6; margin-left: 4px; }
 .score-item {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 16px; border-radius: 10px; background: #eef4ff;
 }
 .score-item span { font-size: 11px; color: #5a6b85; }
 .score-item strong { font-size: 16px; color: #2f6fe4; }
+.score-item em { font-style: normal; font-size: 10px; color: #8a94a6; }
 .fb-text { margin: 12px 0 0; font-size: 13px; line-height: 1.8; color: #16233a; white-space: pre-wrap; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 .report-head { display: flex; justify-content: space-between; align-items: flex-start; }

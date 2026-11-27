@@ -34,6 +34,9 @@ public interface InterviewService {
     /** 放弃一场进行中的面试（不再提醒、不生成报告） */
     void abandonSession(Integer sessionId);
 
+    /** 刷新会话活跃时间：用户点"继续作答"后调用，提醒重新计时 */
+    void touchSession(Integer sessionId);
+
     /** 获取当前待作答的题目（没有则自动出下一题） */
     InterviewTurnVO getCurrentQuestion(Integer sessionId);
 

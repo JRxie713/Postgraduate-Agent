@@ -60,6 +60,13 @@ public class InterviewController {
         return Result.success(null);
     }
 
+    /** 心跳：用户点"继续作答"后刷新活跃时间，超时提醒重新计时 */
+    @PostMapping("/sessions/{id}/heartbeat")
+    public Result<Void> heartbeat(@PathVariable Integer id) {
+        interviewService.touchSession(id);
+        return Result.success(null);
+    }
+
     /** 查询会话详情 */
     @GetMapping("/sessions/{id}")
     public Result<InterviewSessionVO> getSession(@PathVariable Integer id) {

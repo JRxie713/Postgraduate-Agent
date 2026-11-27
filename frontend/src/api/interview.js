@@ -31,6 +31,10 @@ export const finishInterview = (id) =>
 export const abandonInterview = (id) =>
   request(`/interview/sessions/${id}/abandon`, { method: 'POST' })
 
+// 心跳：点"继续作答"后刷新活跃时间，超时提醒重新计时
+export const heartbeatInterview = (id) =>
+  request(`/interview/sessions/${id}/heartbeat`, { method: 'POST' })
+
 export const getInterviewReport = (id) => request(`/interview/sessions/${id}/report`)
 
 export const reviewEnglishIntro = (introduction) =>

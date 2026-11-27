@@ -168,6 +168,17 @@ public class InterviewServiceImpl implements InterviewService {
         sessionMapper.updateById(session);
     }
 
+    @Override
+    public void touchSession(Integer sessionId) {
+        InterviewSession session = requireSession(sessionId);
+        if (!STATUS_ONGOING.equals(session.getStatus())) {
+            return;
+        }
+        // 用户点"继续作答"即视为重新活跃，刷新时间后提醒重新计时
+        session.setUpdateTime(LocalDateTime.now());
+        sessionMapper.updateById(session);
+    }
+
     // ==================== 问答 ====================
 
     @Override
